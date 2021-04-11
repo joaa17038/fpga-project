@@ -14,51 +14,51 @@ port (
     inputNumber : in std_logic_vector(7 downto 0);
     -- Output
     max : out std_logic_vector(7 downto 0);
-    max_valid : out std_logic);
+    maxValid : out std_logic);
 end entity;
 
 
-architecture rtl of generic_maximum is
+architecture rtl of slidingWindowMaximum is
 
-    signal idx : integer range 0 to WINDOWSIZE-1 := 0;
-    signal internal_valid : std_logic;
+    signal countInput : integer range 0 to WINDOWSIZE-1 := 0;
+    signal internalValid : std_logic;
 
 begin
 
     process (clk)
-    
+
         variable tempMax : std_logic_vector(7 downto 0) := (others => '0');
         type mem is array(WINDOWSIZE-1 downto 0) of std_logic_vector(7 downto 0);
         variable memory : mem;
-    
+
     begin
 
         if rising_edge(clk) then
-        
+
             if rst = '1' then
-                idx <= 0;
-                internal_valid <= '0';
+                internalValid <= '0';
                 max <= (others => '0');
-                max_valid <= '0';
-            else   
-                memory(idx) := inputNumber;
-                if idx = WINDOWSIZE-2 then
-                    idx <= 1;
-                    internal_valid <= '1';
-                else
-                    idx <= idx + 1;
-                end if;
-                
-                if internal_valid = '1' then
-                    tempMax := (others => '0');
+                maxValid <= '0';
+            else
+                memory := memory(WINDOWSIZE-2 downto 0) & inputNumber;
+
+                if countInput = WINDOWSIZE then
+                    internalValid <= '1';
                     for i in 0 to WINDOWSIZE-1 loop
                         if memory(i) > tempMax then
                             tempMax := memory(i);
                         end if;
                     end loop;
+                else
+                    countInput <= countInput + 1;
                 end if;
+
+                if internalValid = '1' and inputNumber > tempMax then
+                    tempMax := inputNumber;
+                end if;
+
                 max <= tempMax;
-                max_valid <= internal_valid;
+                maxValid <= internalValid;
             end if;
 
         end if;
