@@ -14,7 +14,7 @@ port (
 end entity;
 
 
-architecture rtl of ones is
+architecture rtl of countBits is
 
 begin
 
@@ -23,9 +23,9 @@ begin
         variable count : std_logic_vector(7 downto 0);
 
     begin
-    
+
         if rising_edge(clk) then
-        
+
             if rst = '1' then
                 ones <= (others => '0');
             else
@@ -35,9 +35,9 @@ begin
                 end loop;
                 ones <= std_logic_vector(count);
             end if;
-            
+
         end if;
-        
+
     end process;
 
 end architecture;
