@@ -43,9 +43,7 @@ begin
                 internalValid <= '0';
                 max <= (others => '0');
             else
-                if internalValid = '1' and inputNumber > tempMax then
-                    tempMax := inputNumber; -- Assign the greater maximum
-                elsif countInput = WINDOWSIZE then
+                if countInput = WINDOWSIZE or internalValid = '1' then
                     internalValid <= '1'; -- Set maximum valid
                     for i in 0 to WINDOWSIZE-1 loop
                         if memory(i) > tempMax then
