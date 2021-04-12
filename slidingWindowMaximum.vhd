@@ -20,16 +20,20 @@ end entity;
 
 architecture rtl of slidingWindowMaximum is
 
+    type mem is array(WINDOWSIZE-1 downto 0) of std_logic_vector(DATAWIDTH-1 downto 0);
     signal countInput : integer range 0 to WINDOWSIZE-1 := 0;
-    signal internalValid : std_logic;
+    signal internalValid : std_logic := '0';
+    signal memory: mem;
 
 begin
+
+    maxValid <= internalValid; -- Assign to output signal
+    
+    memory <= memory(WINDOWSIZE-2 downto 0) & inputNumber; -- Shift the window
 
     process (clk)
 
         variable tempMax : std_logic_vector(DATAWIDTH-1 downto 0) := (others => '0');
-        type mem is array(WINDOWSIZE-1 downto 0) of std_logic_vector(DATAWIDTH-1 downto 0);
-        variable memory : mem;
 
     begin
 
@@ -38,27 +42,20 @@ begin
             if rst = '1' then
                 internalValid <= '0';
                 max <= (others => '0');
-                maxValid <= '0';
             else
-                memory := memory(WINDOWSIZE-2 downto 0) & inputNumber;
-
-                if countInput = WINDOWSIZE then
-                    internalValid <= '1';
+                if internalValid = '1' and inputNumber > tempMax then
+                    tempMax := inputNumber; -- Assign the greater maximum
+                elsif countInput = WINDOWSIZE then
+                    internalValid <= '1'; -- Set maximum valid
                     for i in 0 to WINDOWSIZE-1 loop
                         if memory(i) > tempMax then
                             tempMax := memory(i);
                         end if;
                     end loop;
                 else
-                    countInput <= countInput + 1;
+                    countInput <= countInput + 1; -- Increment counter
                 end if;
-
-                if internalValid = '1' and inputNumber > tempMax then
-                    tempMax := inputNumber;
-                end if;
-
-                max <= tempMax;
-                maxValid <= internalValid;
+                max <= tempMax; -- Assign to output signal
             end if;
 
         end if;
