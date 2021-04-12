@@ -11,8 +11,8 @@ port (
     -- Inputs
     clk : in std_logic;
     rst : in std_logic;
-    -- Outputs
     inputNumber : in std_logic_vector(DATAWIDTH-1 downto 0);
+    -- Outputs
     ones : out std_logic_vector(DATAWIDTH-1 downto 0) := (others => '0'));
 end entity;
 
@@ -23,7 +23,7 @@ begin
 
     process (clk)
 
-        variable count : std_logic_vector(DATAWIDTH-1 downto 0);
+        variable count : std_logic_vector(DATAWIDTH-1 downto 0) := (others => '0');
 
     begin
 
