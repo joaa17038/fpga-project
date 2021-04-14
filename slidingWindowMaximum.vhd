@@ -6,7 +6,7 @@ use ieee.std_logic_textio.all;
 
 
 entity slidingWindowMaximum is
-generic (WINDOWSIZE, DATAWIDTH: Integer);
+generic (WINDOWSIZE, DATAWIDTH: integer);
 port (
     -- Inputs
     clk : in std_logic;
@@ -28,7 +28,7 @@ architecture rtl of slidingWindowMaximum is
 begin
 
     maxValid <= internalValid; -- Assign to output signal
-    
+
     memory <= memory(WINDOWSIZE-2 downto 0) & inputNumber; -- Shift the window
 
     process (clk)
