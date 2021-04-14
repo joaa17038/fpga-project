@@ -50,12 +50,25 @@ begin
                 readline(read_file, line_v);
                 hread(line_v, input_from_file);
                 inputNumber <= input_from_file;
+            else
+                inputNumber <= (others => '0');
             end if;
         end if;
 
     end process;
 
-    i_SlidingWindowMaximum1 : entity work.slidingWindowMaximum(rtl)
+--    i_SlidingWindowMaximum1 : entity work.slidingWindowMaximum(rtl)
+--    generic map (
+--        WINDOWSIZE => WINDOWSIZE,
+--        DATAWIDTH => DATAWIDTH)
+--    port map (
+--        clk => clk,
+--        rst => rst,
+--        inputNumber => inputNumber,
+--        max => max,
+--        maxValid => maxValid);
+
+    i_SlidingWindowMaximumV2 : entity work.slidingWindowMaximumV2(rtl)
     generic map (
         WINDOWSIZE => WINDOWSIZE,
         DATAWIDTH => DATAWIDTH)
