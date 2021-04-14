@@ -6,7 +6,7 @@ use ieee.std_logic_textio.all;
 
 
 entity countBits is
-generic (DATAWIDTH: Integer);
+generic (DATAWIDTH: integer);
 port (
     -- Inputs
     clk : in std_logic;
