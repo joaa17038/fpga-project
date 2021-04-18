@@ -43,18 +43,25 @@ begin
             else
                 memory <= memory(1 to WINDOWSIZE-1) & inputNumber;
                 
-                if inputNumber > firstMax then
-                    secondMax <= firstMax;
-                    firstMax <= inputNumber;
-                elsif inputNumber > secondMax then
+                if secondMax = memory(0) and inputNumber < firstMax and firstMax /= memory(0) then
                     secondMax <= inputNumber;
+                elsif secondMax <= memory(0) then
+                    secondMax <= (others => '0');
                 end if;
-
-                if secondMax = memory(0) then
-                    secondMax <= (others => '0');
-                elsif firstMax = memory(0) then
-                    firstMax <= secondMax;
-                    secondMax <= (others => '0');
+                
+                if firstMax = memory(0) then
+                    if secondMax > inputNumber and secondMax /= memory(0) then
+                        firstMax <= secondMax;
+                    else
+                        firstMax <= inputNumber;
+                    end if;
+                elsif firstMax /= memory(0) and inputNumber > firstMax then
+                    if firstMax > secondMax then
+                        secondMax <= firstMax;
+                        firstMax <= inputNumber;
+                    else
+                        firstMax <= inputNumber;
+                    end if;
                 end if;
 
                 if count = WINDOWSIZE then
