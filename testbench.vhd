@@ -3,6 +3,7 @@ use ieee.std_logic_1164.all;
 use ieee.std_logic_unsigned.all;
 use std.textio.all;
 use ieee.std_logic_textio.all;
+use ieee.numeric_std.all;
 
 
 entity testbench is
@@ -18,8 +19,10 @@ architecture sim of testbench is
     signal inputNumber : std_logic_vector(DATAWIDTH-1 downto 0) := (others => '0');
 
     signal max : std_logic_vector(DATAWIDTH-1 downto 0);
-    signal ones : std_logic_vector(DATAWIDTH-1 downto 0);
+    --signal ones : std_logic_vector(DATAWIDTH-1 downto 0);
     signal maxValid : std_logic;
+    
+    signal assertNumber : std_logic_vector(DATAWIDTH-1 downto 0) := (others => '0');
 
 begin
 
@@ -38,6 +41,10 @@ begin
         file read_file : text is in "./simulation.in";
         variable line_v : line;
         variable input_from_file : std_logic_vector(DATAWIDTH-1 downto 0);
+        
+        file read_file2 : text is in "./assertion.in";
+        variable line_v2 : line;
+        variable input_from_file2 : std_logic_vector(DATAWIDTH-1 downto 0);
 
     begin
 
@@ -52,6 +59,15 @@ begin
                 inputNumber <= input_from_file;
             else
                 inputNumber <= (others => '0');
+            end if;
+            
+            if not endfile(read_file2) then
+                readline(read_file2, line_v2);
+                hread(line_v2, input_from_file2);
+                assertNumber <= input_from_file2;
+                assert max = input_from_file2 report "Max Value Incorrect " & integer'image(to_integer(unsigned(max))) & " /= " & integer'image(to_integer(unsigned(input_from_file2)));
+            else
+                assertNumber <= (others => '0');
             end if;
         end if;
 
@@ -79,13 +95,13 @@ begin
         max => max,
         maxValid => maxValid);
 
-    i_CountBits1 : entity work.countBits(rtl)
-    generic map (
-        DATAWIDTH => DATAWIDTH)
-    port map (
-        clk => clk,
-        rst => rst,
-        inputNumber => inputNumber,
-        ones => ones);
+--    i_CountBits1 : entity work.countBits(rtl)
+--    generic map (
+--        DATAWIDTH => DATAWIDTH)
+--    port map (
+--        clk => clk,
+--        rst => rst,
+--        inputNumber => inputNumber,
+--        ones => ones);
 
 end architecture;
