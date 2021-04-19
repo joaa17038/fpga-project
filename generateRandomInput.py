@@ -3,7 +3,7 @@ from sys import argv
 from random import choices, shuffle
 
 simulationFile, SIZE = argv[1], int(argv[2])
-assertionFile, WINDOWSIZE = argv[3], int(argv[4])
+assertionFile, WINDOWSIZE, DELAY = argv[3], int(argv[4]), int(argv[5])
 
 hexadecimals = ['00', '01', '02', '03', '04', '05', '06', '07', '08', '09', '0A', '0B', '0C', '0D',
                 '0E', '0F', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '1A', '1B',
@@ -29,8 +29,10 @@ simulation = choices(hexadecimals, k=SIZE)
 with open(simulationFile, 'w') as file1:
     file1.writelines(item + '\n' for item in simulation)
 
-assertions = []
+assertions = ['00\n' for i in range(DELAY)] if DELAY else []
 for i in range(len(simulation)):
+    if i == len(simulation)-WINDOWSIZE+1:
+        break
     integers = [int(j, 16) for j in simulation[i:i+WINDOWSIZE]]
     assertions.append('%0.2X' % max(integers) + '\n')
 
