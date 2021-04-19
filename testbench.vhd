@@ -16,13 +16,17 @@ architecture sim of testbench is
 
     signal clk : std_logic := '1';
     signal rst: std_logic := '1';
-    signal inputNumber : std_logic_vector(DATAWIDTH-1 downto 0) := (others => '0');
 
-    signal max : std_logic_vector(DATAWIDTH-1 downto 0);
-    --signal ones : std_logic_vector(DATAWIDTH-1 downto 0);
-    signal maxValid : std_logic;
+    signal m_axi_data : std_logic_vector(DATAWIDTH-1 downto 0) := (others => '0');
+    signal m_axi_valid: std_logic := '0';
+    signal m_axi_ready: std_logic := '0';
+    signal m_axi_last: std_logic := '0';
+
+    signal s_axi_data : std_logic_vector(DATAWIDTH-1 downto 0);
+    signal s_axi_valid : std_logic;
+    signal s_axi_ready : std_logic;
     
-    signal assertNumber : std_logic_vector(DATAWIDTH-1 downto 0) := (others => '0');
+    signal assertion : std_logic_vector(DATAWIDTH-1 downto 0) := (others => '0');
 
 begin
 
@@ -41,34 +45,57 @@ begin
         file read_file : text is in "./simulation.in";
         variable line_v : line;
         variable input_from_file : std_logic_vector(DATAWIDTH-1 downto 0);
-        
+
         file read_file2 : text is in "./assertion.in";
         variable line_v2 : line;
         variable input_from_file2 : std_logic_vector(DATAWIDTH-1 downto 0);
+        
+        variable start : integer := 1;
+        variable count : integer := 0;
 
     begin
 
         wait until clk'event and clk='1';
 
         if rst = '1' then
-            inputNumber <= (others => '0');
+            m_axi_data <= (others => '0');
+            m_axi_valid <= '0';
+            m_axi_ready <= '0';
+            m_axi_last <= '0';
+
         else
-            if not endfile(read_file) then
+            if start = 1 then
+                start := 0;
+                m_axi_ready <= '1';
+            end if;
+
+            if not endfile(read_file) and s_axi_ready = '1' then
+                m_axi_valid <= '1';
                 readline(read_file, line_v);
                 hread(line_v, input_from_file);
-                inputNumber <= input_from_file;
-            else
-                inputNumber <= (others => '0');
+                m_axi_data <= input_from_file;
+                count := count + 1; -- testing m_axi_last
+            elsif endfile(read_file) then
+                count := 0;
+                m_axi_ready <= '0';
+                m_axi_last <= '0';
+                m_axi_valid <= '0';
+                m_axi_data <= (others => '0');
             end if;
             
+            if count = 25 then
+                m_axi_last <= '1';
+            end if;
+
             if not endfile(read_file2) then
                 readline(read_file2, line_v2);
                 hread(line_v2, input_from_file2);
-                assertNumber <= input_from_file2;
-                assert max = input_from_file2 report "Max Value Incorrect " & integer'image(to_integer(unsigned(max))) & " /= " & integer'image(to_integer(unsigned(input_from_file2)));
+                assertion <= input_from_file2;
+                assert s_axi_data = input_from_file2 report "Max Value Incorrect " & integer'image(to_integer(unsigned(s_axi_data))) & " /= " & integer'image(to_integer(unsigned(assertion)));
             else
-                assertNumber <= (others => '0');
+                assertion <= (others => '0');
             end if;
+
         end if;
 
     end process;
@@ -80,20 +107,35 @@ begin
 --    port map (
 --        clk => clk,
 --        rst => rst,
---        inputNumber => inputNumber,
---        max => max,
---        maxValid => maxValid);
+--        inputNumber => m_axi_data,
+--        max => s_axi_data,
+--        maxValid => s_axi_valid);
 
-    i_SlidingWindowMaximumV2 : entity work.slidingWindowMaximumV2(rtl)
+--    i_SlidingWindowMaximumV2 : entity work.slidingWindowMaximumV2(rtl)
+--    generic map (
+--        WINDOWSIZE => WINDOWSIZE,
+--        DATAWIDTH => DATAWIDTH)
+--    port map (
+--        clk => clk,
+--        rst => rst,
+--        inputNumber => m_axi_data,
+--        max => s_axi_data,
+--        maxValid => s_axi_valid);
+
+    i_SlidingWindowMaximumV3 : entity work.slidingWindowMaximumV3(rtl)
     generic map (
         WINDOWSIZE => WINDOWSIZE,
         DATAWIDTH => DATAWIDTH)
     port map (
         clk => clk,
         rst => rst,
-        inputNumber => inputNumber,
-        max => max,
-        maxValid => maxValid);
+        m_axi_data => m_axi_data,
+        m_axi_valid => m_axi_valid,
+        m_axi_ready => m_axi_ready,
+        m_axi_last => m_axi_last,
+        s_axi_data => s_axi_data,
+        s_axi_valid => s_axi_valid,
+        s_axi_ready => s_axi_ready);
 
 --    i_CountBits1 : entity work.countBits(rtl)
 --    generic map (
@@ -101,7 +143,7 @@ begin
 --    port map (
 --        clk => clk,
 --        rst => rst,
---        inputNumber => inputNumber,
---        ones => ones);
+--        inputNumber => m_axi_data,
+--        ones => s_axi_data);
 
 end architecture;
