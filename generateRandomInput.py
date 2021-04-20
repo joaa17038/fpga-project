@@ -31,8 +31,7 @@ with open(simulationFile, 'w') as file1:
 
 assertions = ['00\n' for i in range(DELAY)] if DELAY else []
 for i in range(len(simulation)):
-    if i == len(simulation)-WINDOWSIZE+1:
-        break
+    if i == len(simulation)-WINDOWSIZE+1: break
     integers = [int(j, 16) for j in simulation[i:i+WINDOWSIZE]]
     assertions.append('%0.2X' % max(integers) + '\n')
 

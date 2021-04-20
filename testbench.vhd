@@ -25,7 +25,7 @@ architecture sim of testbench is
     signal s_axi_data : std_logic_vector(DATAWIDTH-1 downto 0);
     signal s_axi_valid : std_logic;
     signal s_axi_ready : std_logic;
-    
+
     signal assertion : std_logic_vector(DATAWIDTH-1 downto 0) := (others => '0');
 
 begin
@@ -49,7 +49,7 @@ begin
         file read_file2 : text is in "./assertion.in";
         variable line_v2 : line;
         variable input_from_file2 : std_logic_vector(DATAWIDTH-1 downto 0);
-        
+
         variable start : integer := 1;
         variable count : integer := 0;
 
@@ -82,7 +82,7 @@ begin
                 m_axi_valid <= '0';
                 m_axi_data <= (others => '0');
             end if;
-            
+
             if count = 25 then
                 m_axi_last <= '1';
             end if;
@@ -99,6 +99,21 @@ begin
         end if;
 
     end process;
+
+    i_SlidingWindowMaximumV3 : entity work.slidingWindowMaximumV3(rtl)
+    generic map (
+        WINDOWSIZE => WINDOWSIZE,
+        DATAWIDTH => DATAWIDTH)
+    port map (
+        clk => clk,
+        rst => rst,
+        m_axi_data => m_axi_data,
+        m_axi_valid => m_axi_valid,
+        m_axi_ready => m_axi_ready,
+        m_axi_last => m_axi_last,
+        s_axi_data => s_axi_data,
+        s_axi_valid => s_axi_valid,
+        s_axi_ready => s_axi_ready);
 
 --    i_SlidingWindowMaximum1 : entity work.slidingWindowMaximum(rtl)
 --    generic map (
@@ -121,21 +136,6 @@ begin
 --        inputNumber => m_axi_data,
 --        max => s_axi_data,
 --        maxValid => s_axi_valid);
-
-    i_SlidingWindowMaximumV3 : entity work.slidingWindowMaximumV3(rtl)
-    generic map (
-        WINDOWSIZE => WINDOWSIZE,
-        DATAWIDTH => DATAWIDTH)
-    port map (
-        clk => clk,
-        rst => rst,
-        m_axi_data => m_axi_data,
-        m_axi_valid => m_axi_valid,
-        m_axi_ready => m_axi_ready,
-        m_axi_last => m_axi_last,
-        s_axi_data => s_axi_data,
-        s_axi_valid => s_axi_valid,
-        s_axi_ready => s_axi_ready);
 
 --    i_CountBits1 : entity work.countBits(rtl)
 --    generic map (

@@ -99,7 +99,7 @@ begin
                     when SEND =>
                         memory <= memory(1 to WINDOWSIZE-1) & m_axi_data;
                         evaluateMaximum;
-                        
+
                         if m_axi_last = '1' then
                             s_axi_data <= firstMax;
                             s_axi_ready <= '0';
