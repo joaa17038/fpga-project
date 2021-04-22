@@ -1,154 +1,69 @@
-states : (TOPLEFTCORNER, TOPSIDE, TOPRIGHTCORNER,
-          LEFTSIDE, MIDDLE, RIGHTSIDE,
-          BOTTOMLEFTCORNER, BOTTOMSIDE, BOTTOMRIGHTCORNER)
+constant PIXELWIDTH : integer := 16;
+constant IMAGEWIDTH : integer := 1920;
+constant IMAGEHEIGHT : integer := 1080;
 
+type typeState is (SIDE, MIDDLE); -- Filter FSM States
+type row is array(0 to IMAGEWIDTH-1) of std_logic_vector(PIXELWIDTH-1 downto 0); -- Maybe unsigned
+type rectangle is array(0 to 2) of row;
+
+signal state : typeState := SIDE;
+signal buffered : rectangle := (others => (others => '0'));
+
+
+-- Filter FSM
 case state is
-    when TOPLEFTCORNER =>
-        output1 <= (m_axi_data(0) + m_axi_data(1) + m_axi_data(2) + m_axi_data(3)) // 4;
+    when SIDE =>
+        -- Leftside corner pixel 2x2
+        s_axi_data(0) <= (buffered(1)(0) + buffered(1)(1)
+                       + buffered(2)(0) + buffered(2)(1)) / 4;
 
-        previousBlock <= m_axi_data;
-        widthTracker <= widthTracker + 1;
-        state <= SIDE;
+        -- Side pixel 2x3
+        for i in 1 to IMAGEWIDTH-2 loop -- Not sure if it synthesises
+            s_axi_data(i) <= (buffered(1)(i-1) + buffered(1)(i) + buffered(1)(i+1)
+                           + buffered(2)(i-1) + buffered(2)(i) + buffered(2)(i+1)) / 6;
+        end loop;
 
-    when TOPSIDE =>
-        output1 <= (m_axi_data(0) + m_axi_data(2) + previousBlock(0)
-                 + previousBlock(1) + previousBlock(2) + previousBlock(3)) // 6;
-        output2 <= (m_axi_data(0) + m_axi_data(1) + m_axi_data(2)
-                 + m_axi_data(3) + previousBlock(1) + previousBlock(3)) // 6;
+        -- Rightside corner pixel 2x2
+        s_axi_data(IMAGEWIDTH-1) <= (buffered(1)(IMAGEWIDTH-2) + buffered(1)(IMAGEWIDTH-1)
+                                  + buffered(2)(IMAGEWIDTH-2) + buffered(2)(IMAGEWIDTH-1)) / 4;
 
-        previousBlock <= m_axi_data;
-        widthTracker <= widthTracker + 2;
-        if widthTracker = WIDTH-3 then
-            state <= RIGHTCORNER;
-        end if;
+        buffered <= buffered(1 to 2) & m_axi_data; -- Should shift out a row, maybe incorrect type
+        heightPointer <= heightPointer + 1;
+        s_axi_valid <= '1'; -- Starts stream
 
-    when TOPRIGHTCORNER =>
-        output1 <= (m_axi_data(0) + m_axi_data(2) + previousBlock(0)
-                 + previousBlock(1) + previousBlock(2) + previousBlock(3)) // 6;
-        output2 <= (m_axi_data(0) + m_axi_data(1) + m_axi_data(2)
-                 + m_axi_data(3) + previousBlock(1) + previousBlock(3)) // 6;
-        output3 <= (m_axi_data(0) + m_axi_data(1) + m_axi_data(2) + m_axi_data(3)) // 4;
-
-        previousBlock <= (others => (others => '0'));
-        widthTracker <= (others => '0');
-        heightTracker <= heightTracker + 1;
-        if heightTracker = HEIGHT-4 then
-            state <= BOTTOMLEFTCORNER;
+        if heightPointer = HEIGHT-2 then -- 2xM image probably won't happen, maybe remove
+            state <= SIDE;
+        elsif heightPointer = HEIGHT-1 then
+            s_axi_valid <= '0'; -- Ends stream
         else
-            state <= LEFTSIDE;
+            state <= MIDDLE;
         end if;
-
-    when LEFTSIDE =>
-        output1 <= (upperRow(0) + upperRow(1)
-                 + lowerRow(0) + lowerRow(1)
-                 + m_axi_data(0) + m_axi_data(1)) // 6;
-        output2 <= (lowerRow(0) + lowerRow(1)
-                 + m_axi_data(0) + m_axi_data(1)
-                 + m_axi_data(2) + m_axi_data(3)) // 6;
-
-        previousBlock <= m_axi_data;
-        blockTracker <= blockTracker + 4;
-        widthTracker <= widthTracker + 2;
-        state <= MIDDLE;
 
     when MIDDLE =>
-        output1 <= (upperRow(0+blockTracker) + upperRow(1+blockTracker) + upperRow(2+blockTracker)
-                 + lowerRow(0+blockTracker) + lowerRow(1+blockTracker) + lowerRow(2+blockTracker)
-                 + previousBlock(0) + previousBlock(1) + m_axi_data(0)) // 9;
-        output2 <= (upperRow(1+blockTracker) + upperRow(2+blockTracker) + upperRow(3+blockTracker)
-                 + lowerRow(1+blockTracker) + lowerRow(2+blockTracker) + lowerRow(3+blockTracker)
-                 + previousBlock(1) + m_axi_data(0) + m_axi_data(1)) // 9;
-        output3 <= (lowerRow(0+blockTracker) + lowerRow(1+blockTracker) + lowerRow(2+blockTracker)
-                 + previousBlock(0) + previousBlock(1) + m_axi_data(0)
-                 + previousBlock(2) + previousBlock(3) + m_axi_data(2)) // 9;
-        output4 <= (lowerRow(1+blockTracker) + lowerRow(2+blockTracker) + lowerRow(3+blockTracker)
-                 + previousBlock(1+blockTracker) + m_axi_data(0) + m_axi_data(1)
-                 + previousBlock(3) + m_axi_data(2) + m_axi_data(3)) // 9;
+        -- Leftside pixel 3x2
+        s_axi_data(i) <= (buffered(0)(0) + buffered(0)(1)
+                       + buffered(1)(0) + buffered(1)(1)
+                       + buffered(2)(0) + buffered(2)(0)) / 6;
 
-        previousBlock <= m_axi_data;
-        blockTracker <= blockTracker + 4;
-        widthTracker <= widthTracker + 2;
-        if widthTracker = WIDTH-3 then
-            state <= RIGHTSIDE;
-        end if;
+        -- Middle pixel 3x3
+        for i in 1 to IMAGEWIDTH-2 loop -- Not sure if it synthesises
+            s_axi_data(i) <= (buffered(0)(i-1) + buffered(0)(i) + buffered(0)(i+1)
+                           + buffered(1)(i-1) + buffered(1)(i) + buffered(1)(i+1)
+                           + buffered(2)(i-1) + buffered(2)(i) + buffered(2)(i+1)) / 9;
+        end loop;
 
-    when RIGHTSIDE =>
-        output1 <= (upperRow(0+blockTracker) + upperRow(1+blockTracker) + upperRow(2+blockTracker)
-                 + lowerRow(0+blockTracker) + lowerRow(1+blockTracker)  + lowerRow(2+blockTracker)
-                 + previousBlock(0) + previousBlock(1) + m_axi_data(0)) // 9;
+        -- Rightside pixel 3x2
+        s_axi_data(IMAGEWIDTH-1) <= (buffered(0)(IMAGEWIDTH-2) + buffered(0)(IMAGEWIDTH-1)
+                                  + buffered(1)(IMAGEWIDTH-2) + buffered(1)(IMAGEWIDTH-1)
+                                  + buffered(2)(IMAGEWIDTH-2) + buffered(2)(IMAGEWIDTH-1)) / 6;
 
-        output2 <= (upperRow(1+blockTracker) + upperRow(2+blockTracker) + upperRow(3+blockTracker)
-                 + lowerRow(1+blockTracker) + lowerRow(2+blockTracker) + lowerRow(3+blockTracker)
-                 + previousBlock(1) + m_axi_data(0) + m_axi_data(1)) // 9;
+        buffered <= buffered(1 to 2) & m_axi_data; -- Should shift out a row, maybe incorrect type
+        heightPointer <= heightPointer + 1;
 
-        output3 <= (upperRow(2+blockTracker) + upperRow(3+blockTracker)
-                 + lowerRow(2+blockTracker) + lowerRow(3+blockTracker)
-                 + m_axi_data(0) + m_axi_data(1)) // 6;
-
-        output4 <= (lowerRow(0+blockTracker) + lowerRow(1+blockTracker) + lowerRow(2+blockTracker),
-                 + previousBlock(0) + previousBlock(1) + m_axi_data(0)
-                 + previousBlock(2) + previousBlock(3) + m_axi_data(2)) // 9;
-
-        output5 <= (lowerRow(1+blockTracker) + lowerRow(2+blockTracker) + lowerRow(3+blockTracker),
-                 + previousBlock(1) + m_axi_data(0) + m_axi_data(1)
-                 + previousBlock(3) + m_axi_data(2) + m_axi_data(3)) // 9;
-
-        output6 <= (lowerRow(2+blockTracker) + lowerRow(3+blockTracker)
-                 + m_axi_data(0) + m_axi_data(1)
-                 + m_axi_data(2) + m_axi_data(3)) // 6;
-
-        previousBlock <= (others => (others => '0'));
-        widthTracker <= (others => '0');
-        blockTracker <= (others => '0');
-        heightTracker <= heightTracker + 2;
-        if heightTracker = HEIGHT-4 then
-            state <= BOTTOMLEFTCORNER;
+        if heightPointer = HEIGHT-2 then
+            state <= SIDE;
         else
-            state <= LEFTSIDE;
+            state <= MIDDLE;
         end if;
-
-    when BOTTOMLEFTCORNER =>
-        output1 <= (upperRow(0) + upperRow(1)
-                 + lowerRow(0) + lowerRow(1)
-                 + m_axi_data(0) + m_axi_data(1)) // 6;
-        output2 <= (lowerRow(0) + lowerRow(1)
-                 + m_axi_data(0) + m_axi_data(1)
-                 + m_axi_data(2) + m_axi_data(3)) // 6;
-        output3 <= (m_axi_data(0) + m_axi_data(1)
-                 + m_axi_data(2) + m_axi_data(3)) // 4;
-
-        previousBlock <= m_axi_data;
-        widthTracker <= widthTracker + 1;
-        state <= BOTTOMSIDE;
-
-        #  0  1     4  5    8  9    12 13
-        #  2 (3     6) 7    10 11   14 15
-
-    when BOTTOMSIDE =>
-        output1 <= (upperRow(1+blockTracker) + upperRow(2+blockTracker) + upperRow(3+blockTracker)
-                 + lowerRow(1+blockTracker) + lowerRow(2+blockTracker) + lowerRow(3+blockTracker)
-                 + previousBlock(1) + );
-        output2 <= ();
-        output3 <= ();
-        output4 <= ();
-        output5 <= ();
-        output6 <= ();
-
-        previousBlock <= m_axi_data;
-        blockTracker <= blockTracker + 4;
-        widthTracker <= widthTracker + 2;
-        if widthTracker = WIDTH-3 then
-            state <= BOTTOMRIGHTCORNER
-        end if;
-
-    WHEN BOTTOMRIGHTCORNER =>
-        output1 <= ();
-        output2 <= ();
-        output3 <= ();
-        output4 <= ();
-        output5 <= ();
-        output6 <= ();
-
-        s_axi_valid <= '0';
 
 end case;
