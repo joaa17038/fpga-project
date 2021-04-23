@@ -1,6 +1,7 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 from sys import argv
 from random import choices, shuffle
+
 
 simulationFile, SIZE = argv[1], int(argv[2])
 assertionFile, WINDOWSIZE, DELAY = argv[3], int(argv[4]), int(argv[5])
