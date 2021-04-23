@@ -12,11 +12,11 @@ port (
 
     m_axi_valid : in std_logic;
     m_axi_ready : in std_logic;
-    m_axi_data : std_logic_vector(PIXELSIZE-1 downto 0);
+    m_axi_data : std_logic_vector(IMAGEWIDTH*PIXELSIZE-1 downto 0);
     m_axi_last : in std_logic;
 
     s_axi_valid : out std_logic := '0';
-    --s_axi_data : out row := (others => '0'); -- maybe make a package for a row
+    s_axi_data : out std_logic_vector := (others => '0');
     s_axi_ready : out std_logic := '0');
 end entity;
 
@@ -24,12 +24,9 @@ end entity;
 architecture rtl of slidingBlurFilterV1 is
 
     type typeState is (RECEIVE, SIDE, MIDDLE); -- Filter FSM States
-    type row is array(0 to IMAGEWIDTH-1) of unsigned(PIXELSIZE-1 downto 0); -- Maybe unsigned
-    type rectangle is array(0 to 2) of row;
-
-    signal s_axi_data : row := (others => (others => '0')); -- temporary instead of out declaration
+    type threeRows is array(0 to 2) of std_logic_vector(IMAGEWIDTH*PIXELSIZE-1 downto 0);
     signal state : typeState := RECEIVE;
-    signal buffered : rectangle := (others => (others => (others => '0')));
+    signal buffered : threeRows := (others => (others =>'0'));
     signal heightPointer : integer range 0 to IMAGEHEIGHT-1 := 0;
 
 begin
@@ -42,9 +39,9 @@ begin
                 state <= RECEIVE;
                 s_axi_ready <= '0';
                 s_axi_valid <= '0';
-                s_axi_data <= (others => (others => '0'));
+                s_axi_data <= (others => '0');
                 heightPointer <= 0;
-                buffered <= (others => (others => (others => '0')));
+                buffered <= (others => (others =>'0'));
 
             else
                 -- Filter FSM
@@ -59,26 +56,38 @@ begin
 
                     when SIDE =>
                         -- Leftside corner pixel 2x2
-                        s_axi_data(0) <= (buffered(1)(0) + buffered(1)(1)
-                                       + buffered(2)(0) + buffered(2)(1)) / 4;
+                        s_axi_data(PIXELSIZE-1 downto 0) <= std_logic_vector((
+                                                  unsigned(buffered(1)(PIXELSIZE-1 downto 0))
+                                                + unsigned(buffered(1)(PIXELSIZE*2-1 downto PIXELSIZE))
+                                                + unsigned(buffered(2)(PIXELSIZE-1 downto 0))
+                                                + unsigned(buffered(2)(PIXELSIZE*2-1 downto PIXELSIZE))
+                                                ) / 4);
 
                         -- Side pixel 2x3
-                        for i in 1 to IMAGEWIDTH-2 loop -- Not sure if it synthesises
-                            s_axi_data(i) <= (buffered(1)(i-1) + buffered(1)(i) + buffered(1)(i+1)
-                                           + buffered(2)(i-1) + buffered(2)(i) + buffered(2)(i+1)) / 6;
+                        for i in 1 to IMAGEWIDTH-2 loop
+                            s_axi_data(PIXELSIZE*i*2-1 downto PIXELSIZE*i) <= std_logic_vector((
+                                             unsigned(buffered(1)(PIXELSIZE*(i-1)-1 downto PIXELSIZE*(i-1)-PIXELSIZE))
+                                           + unsigned(buffered(1)(PIXELSIZE*(i)-1 downto PIXELSIZE*(i)-PIXELSIZE))
+                                           + unsigned(buffered(1)(PIXELSIZE*(i+1)-1 downto PIXELSIZE*(i+1)-PIXELSIZE))
+                                           + unsigned(buffered(2)(PIXELSIZE*(i-1)-1 downto PIXELSIZE*(i-1)-PIXELSIZE))
+                                           + unsigned(buffered(2)(PIXELSIZE*(i)-1 downto PIXELSIZE*(i)-PIXELSIZE))
+                                           + unsigned(buffered(2)(PIXELSIZE*(i+1)-1 downto PIXELSIZE*(i+1)-PIXELSIZE))
+                                           ) / 6);
                         end loop;
 
                         -- Rightside corner pixel 2x2
-                        s_axi_data(IMAGEWIDTH-1) <= (buffered(1)(IMAGEWIDTH-2) + buffered(1)(IMAGEWIDTH-1)
-                                                  + buffered(2)(IMAGEWIDTH-2) + buffered(2)(IMAGEWIDTH-1)) / 4;
+                        s_axi_data(PIXELSIZE*IMAGEWIDTH-1 downto PIXELSIZE*IMAGEWIDTH-PIXELSIZE) <= std_logic_vector((
+                                                              unsigned(buffered(1)(PIXELSIZE*(IMAGEWIDTH-1)-1 downto PIXELSIZE*(IMAGEWIDTH-1)-PIXELSIZE))
+                                                            + unsigned(buffered(1)(PIXELSIZE*IMAGEWIDTH-1 downto PIXELSIZE*IMAGEWIDTH-PIXELSIZE))
+                                                            + unsigned(buffered(2)((IMAGEWIDTH-1)*PIXELSIZE-1 downto (IMAGEWIDTH-1)*PIXELSIZE-IMAGEWIDTH))
+                                                            + unsigned(buffered(2)(PIXELSIZE*IMAGEWIDTH-1 downto PIXELSIZE*IMAGEWIDTH-PIXELSIZE))
+                                                            ) / 4);
 
-                        buffered <= buffered(1 to 2) & m_axi_data; -- Should shift out a row, maybe incorrect type
+                        buffered <= buffered(1 to 2) & m_axi_data;
                         heightPointer <= heightPointer + 1;
                         s_axi_valid <= '1'; -- Starts stream
 
-                        if heightPointer = IMAGEHEIGHT-2 then -- 2xM image probably won't happen, maybe remove
-                            state <= SIDE;
-                        elsif heightPointer = IMAGEHEIGHT-1 then
+                        if heightPointer = IMAGEHEIGHT-1 then
                             s_axi_valid <= '0'; -- Ends stream
                         else
                             state <= MIDDLE;
@@ -86,23 +95,36 @@ begin
 
                     when MIDDLE =>
                         -- Leftside pixel 3x2
-                        s_axi_data(0) <= (buffered(0)(0) + buffered(0)(1)
-                                       + buffered(1)(0) + buffered(1)(1)
-                                       + buffered(2)(0) + buffered(2)(0)) / 6;
+                        s_axi_data(PIXELSIZE-1 downto 0) <= std_logic_vector((unsigned(buffered(1)(PIXELSIZE-1 downto 0)) + unsigned(buffered(1)(PIXELSIZE*2-1 downto PIXELSIZE))
+                                                + unsigned(buffered(2)(PIXELSIZE-1 downto 0)) + unsigned(buffered(2)(PIXELSIZE*2-1 downto PIXELSIZE))
+                                                + unsigned(buffered(2)(PIXELSIZE-1 downto 0)) + unsigned(buffered(2)(PIXELSIZE*2-1 downto PIXELSIZE))) / 6);
 
                         -- Middle pixel 3x3
-                        for i in 1 to IMAGEWIDTH-2 loop -- Not sure if it synthesises
-                            s_axi_data(i) <= (buffered(0)(i-1) + buffered(0)(i) + buffered(0)(i+1)
-                                           + buffered(1)(i-1) + buffered(1)(i) + buffered(1)(i+1)
-                                           + buffered(2)(i-1) + buffered(2)(i) + buffered(2)(i+1)) / 9;
+                        for i in 1 to IMAGEWIDTH-2 loop
+                            s_axi_data(PIXELSIZE*i*2-1 downto PIXELSIZE*i) <= std_logic_vector((
+                                             unsigned(buffered(0)(PIXELSIZE*(i-1)-1 downto PIXELSIZE*(i-1)-PIXELSIZE))
+                                           + unsigned(buffered(0)(PIXELSIZE*(i)-1 downto PIXELSIZE*(i)-PIXELSIZE))
+                                           + unsigned(buffered(0)(PIXELSIZE*(i+1)-1 downto PIXELSIZE*(i+1)-PIXELSIZE))
+                                           + unsigned(buffered(1)(PIXELSIZE*(i-1)-1 downto PIXELSIZE*(i-1)-PIXELSIZE))
+                                           + unsigned(buffered(1)(PIXELSIZE*(i)-1 downto PIXELSIZE*(i)-PIXELSIZE))
+                                           + unsigned(buffered(1)(PIXELSIZE*(i+1)-1 downto PIXELSIZE*(i+1)-PIXELSIZE))
+                                           + unsigned(buffered(2)(PIXELSIZE*(i-1)-1 downto PIXELSIZE*(i-1)-PIXELSIZE))
+                                           + unsigned(buffered(2)(PIXELSIZE*(i)-1 downto PIXELSIZE*(i)-PIXELSIZE))
+                                           + unsigned(buffered(2)(PIXELSIZE*(i+1)-1 downto PIXELSIZE*(i+1)-PIXELSIZE))
+                                           ) / 9);
                         end loop;
 
                         -- Rightside pixel 3x2
-                        s_axi_data(IMAGEWIDTH-1) <= (buffered(0)(IMAGEWIDTH-2) + buffered(0)(IMAGEWIDTH-1)
-                                                  + buffered(1)(IMAGEWIDTH-2) + buffered(1)(IMAGEWIDTH-1)
-                                                  + buffered(2)(IMAGEWIDTH-2) + buffered(2)(IMAGEWIDTH-1)) / 6;
+                        s_axi_data(PIXELSIZE*IMAGEWIDTH-1 downto PIXELSIZE*IMAGEWIDTH-PIXELSIZE) <= std_logic_vector((
+                                                              unsigned(buffered(0)(PIXELSIZE*(IMAGEWIDTH-1)-1 downto PIXELSIZE*(IMAGEWIDTH-1)-PIXELSIZE))
+                                                            + unsigned(buffered(0)(PIXELSIZE*IMAGEWIDTH-1 downto PIXELSIZE*IMAGEWIDTH-PIXELSIZE))
+                                                            + unsigned(buffered(1)(PIXELSIZE*(IMAGEWIDTH-1)-1 downto PIXELSIZE*(IMAGEWIDTH-1)-PIXELSIZE))
+                                                            + unsigned(buffered(1)(PIXELSIZE*IMAGEWIDTH-1 downto PIXELSIZE*IMAGEWIDTH-PIXELSIZE))
+                                                            + unsigned(buffered(2)(PIXELSIZE*(IMAGEWIDTH-1)-1 downto PIXELSIZE*(IMAGEWIDTH-1)-PIXELSIZE))
+                                                            + unsigned(buffered(2)(PIXELSIZE*IMAGEWIDTH-1 downto PIXELSIZE*IMAGEWIDTH-PIXELSIZE))
+                                                            ) / 6);
 
-                        buffered <= buffered(1 to 2) & m_axi_data; -- Should shift out a row, maybe incorrect type
+                        buffered <= buffered(1 to 2) & m_axi_data;
                         heightPointer <= heightPointer + 1;
 
                         if heightPointer = IMAGEHEIGHT-2 then
