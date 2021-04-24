@@ -12,20 +12,20 @@ port (
 
     s_axi_valid : in std_logic;
     s_axi_ready : out std_logic := '1';
-    s_axi_data : in std_logic_vector(IMAGEWIDTH*PIXELSIZE-1 downto 0);
+    s_axi_data : in std_logic_vector(PIXELSIZE*IMAGEWIDTH-1 downto 0);
     s_axi_last : in std_logic;
 
     m_axi_valid : out std_logic := '0';
     m_axi_ready : in std_logic;
     m_axi_last : out std_logic := '0';
-    m_axi_data : out std_logic_vector(IMAGEWIDTH*PIXELSIZE-1 downto 0) := (others => '0'));
+    m_axi_data : out std_logic_vector(PIXELSIZE*IMAGEWIDTH-1 downto 0) := (others => '0'));
 end entity;
 
 
 architecture rtl of slidingBlurFilterV1 is
 
     type typeState is (RECEIVE, SIDE, MIDDLE);
-    type threeRows is array(0 to 2) of std_logic_vector(IMAGEWIDTH*PIXELSIZE-1 downto 0);
+    type threeRows is array(0 to 1) of std_logic_vector(PIXELSIZE*IMAGEWIDTH-1 downto 0); --2  before
     
     signal state : typeState := RECEIVE;
     signal buffered : threeRows := (others => (others => '0'));
@@ -33,11 +33,7 @@ architecture rtl of slidingBlurFilterV1 is
 
 begin
 
-    process (clk) 
-    
-        variable temp : unsigned(PIXELSIZE*2-1 downto 0) := (others => '0');
-        
-    begin
+    process (clk) begin
 
         if rising_edge(clk) then
 
@@ -53,115 +49,123 @@ begin
                 case state is
                     when RECEIVE =>
                         if s_axi_valid = '1' then
-                            buffered <= buffered(1 to 2) & s_axi_data;
-                        end if;
-                        
-                        heightPointer <= heightPointer + 1;
-                        state <= RECEIVE;
-                        if heightPointer = 2 then
+                            buffered <= buffered(1) & s_axi_data;
                             state <= SIDE;
+                        else
+                            m_axi_last <= '0';
+                            s_axi_ready <= '1';
                             heightPointer <= 0;
+                            m_axi_valid <= '0';
+                            m_axi_data <= (others => '0');
+                            buffered <= (others => (others => '0'));
                         end if;
 
                     when SIDE =>
-                        -- Leftside corner pixel 2x2
-                        temp := temp + unsigned(buffered(1)(PIXELSIZE-1 downto 0));
-                        temp := temp + unsigned(buffered(1)(PIXELSIZE*2-1 downto PIXELSIZE));
-                        temp := temp + unsigned(buffered(2)(PIXELSIZE-1 downto 0));
-                        temp := temp + unsigned(buffered(2)(PIXELSIZE*2-1 downto PIXELSIZE));
-                        temp := temp / 4;
-                        m_axi_data(PIXELSIZE-1 downto 0) <= std_logic_vector(resize(temp, PIXELSIZE));
-                        temp := (others => '0');
-
-                        -- Side pixel 2x3
-                        for i in 2 to IMAGEWIDTH-1 loop
-                            temp := temp + unsigned(buffered(1)(PIXELSIZE*(i-1)-1 downto PIXELSIZE*(i-1)-PIXELSIZE));
-                            temp := temp + unsigned(buffered(1)(PIXELSIZE*(i)-1 downto PIXELSIZE*(i)-PIXELSIZE));
-                            temp := temp + unsigned(buffered(1)(PIXELSIZE*(i+1)-1 downto PIXELSIZE*(i+1)-PIXELSIZE));
-                            temp := temp + unsigned(buffered(2)(PIXELSIZE*(i-1)-1 downto PIXELSIZE*(i-1)-PIXELSIZE));
-                            temp := temp + unsigned(buffered(2)(PIXELSIZE*(i)-1 downto PIXELSIZE*(i)-PIXELSIZE));
-                            temp := temp + unsigned(buffered(2)(PIXELSIZE*(i+1)-1 downto PIXELSIZE*(i+1)-PIXELSIZE));
-                            temp := temp / 6;
-                            m_axi_data(PIXELSIZE*i-1 downto PIXELSIZE*i-PIXELSIZE) <= std_logic_vector(resize(temp, PIXELSIZE));
-                            temp := (others => '0');
-                        end loop;
-
-                        -- Rightside corner pixel 2x2
-                        temp := temp + unsigned(buffered(1)(PIXELSIZE*(IMAGEWIDTH-1)-1 downto PIXELSIZE*(IMAGEWIDTH-1)-PIXELSIZE));
-                        temp := temp + unsigned(buffered(1)(PIXELSIZE*IMAGEWIDTH-1 downto PIXELSIZE*IMAGEWIDTH-PIXELSIZE));
-                        temp := temp + unsigned(buffered(2)(PIXELSIZE*(IMAGEWIDTH-1)-1 downto PIXELSIZE*(IMAGEWIDTH-1)-PIXELSIZE));
-                        temp := temp + unsigned(buffered(2)(PIXELSIZE*IMAGEWIDTH-1 downto PIXELSIZE*IMAGEWIDTH-PIXELSIZE));
-                        temp := temp / 4;
-                        m_axi_data(PIXELSIZE*IMAGEWIDTH-1 downto PIXELSIZE*IMAGEWIDTH-PIXELSIZE) <= std_logic_vector(resize(temp, PIXELSIZE));
-                        temp := (others => '0');
-
                         if s_axi_valid = '1' then
-                            buffered <= buffered(1 to 2) & s_axi_data;
-                        end if;
-                        heightPointer <= heightPointer + 1;
-                        m_axi_valid <= '1'; -- Starts stream
-
-                        if heightPointer = IMAGEHEIGHT-1 then
-                            m_axi_last <= '1';
-                        elsif heightPointer = IMAGEHEIGHT then
-                            m_axi_last <= '0';
-                            s_axi_ready <= '0';
-                            heightPointer <= heightPointer;
-                            m_axi_valid <= '0';
-                            m_axi_data <= (others => '0');
-                        else
+                            -- Leftside corner pixel 2x2
+                            m_axi_data(PIXELSIZE-1 downto 0) <= std_logic_vector(resize((
+                                    resize(unsigned(buffered(1)(PIXELSIZE-1 downto 0)), PIXELSIZE*2-1)
+                                  + unsigned(buffered(1)(PIXELSIZE*2-1 downto PIXELSIZE))
+                                  + unsigned(s_axi_data(PIXELSIZE-1 downto 0))
+                                  + unsigned(s_axi_data(PIXELSIZE*2-1 downto PIXELSIZE))) / 4, PIXELSIZE));
+    
+                            -- Side pixel 2x3
+                            for i in 2 to IMAGEWIDTH-1 loop
+                                m_axi_data(PIXELSIZE*i-1 downto PIXELSIZE*i-PIXELSIZE) <= std_logic_vector(resize((
+                                        resize(unsigned(buffered(1)(PIXELSIZE*(i-1)-1 downto PIXELSIZE*(i-1)-PIXELSIZE)), PIXELSIZE*2-1)
+                                      + unsigned(buffered(1)(PIXELSIZE*(i)-1 downto PIXELSIZE*(i)-PIXELSIZE))
+                                      + unsigned(buffered(1)(PIXELSIZE*(i+1)-1 downto PIXELSIZE*(i+1)-PIXELSIZE))
+                                      + unsigned(s_axi_data(PIXELSIZE*(i-1)-1 downto PIXELSIZE*(i-1)-PIXELSIZE))
+                                      + unsigned(s_axi_data(PIXELSIZE*(i)-1 downto PIXELSIZE*(i)-PIXELSIZE))
+                                      + unsigned(s_axi_data(PIXELSIZE*(i+1)-1 downto PIXELSIZE*(i+1)-PIXELSIZE))) / 6, PIXELSIZE));
+                            end loop;
+    
+                            -- Rightside corner pixel 2x2
+                            m_axi_data(PIXELSIZE*IMAGEWIDTH-1 downto PIXELSIZE*IMAGEWIDTH-PIXELSIZE) <= std_logic_vector(resize((
+                                    resize(unsigned(buffered(1)(PIXELSIZE*(IMAGEWIDTH-1)-1 downto PIXELSIZE*(IMAGEWIDTH-1)-PIXELSIZE)), PIXELSIZE*2-1)
+                                  + unsigned(buffered(1)(PIXELSIZE*IMAGEWIDTH-1 downto PIXELSIZE*IMAGEWIDTH-PIXELSIZE))
+                                  + unsigned(s_axi_data(PIXELSIZE*(IMAGEWIDTH-1)-1 downto PIXELSIZE*(IMAGEWIDTH-1)-PIXELSIZE))
+                                  + unsigned(s_axi_data(PIXELSIZE*IMAGEWIDTH-1 downto PIXELSIZE*IMAGEWIDTH-PIXELSIZE))) / 4, PIXELSIZE));
+    
+                            buffered <= buffered(1) & s_axi_data;
+                            heightPointer <= heightPointer + 1;
+                            m_axi_valid <= '1';
                             state <= MIDDLE;
+                        
+                        elsif heightPointer = IMAGEHEIGHT-1 then
+                             -- Leftside corner pixel 2x2
+                            m_axi_data(PIXELSIZE-1 downto 0) <= std_logic_vector(resize((
+                                    resize(unsigned(buffered(1)(PIXELSIZE-1 downto 0)), PIXELSIZE*2-1)
+                                  + unsigned(buffered(1)(PIXELSIZE*2-1 downto PIXELSIZE))
+                                  + unsigned(buffered(0)(PIXELSIZE-1 downto 0))
+                                  + unsigned(buffered(0)(PIXELSIZE*2-1 downto PIXELSIZE))) / 4, PIXELSIZE));
+    
+                            -- Side pixel 2x3
+                            for i in 2 to IMAGEWIDTH-1 loop
+                                m_axi_data(PIXELSIZE*i-1 downto PIXELSIZE*i-PIXELSIZE) <= std_logic_vector(resize((
+                                        resize(unsigned(buffered(1)(PIXELSIZE*(i-1)-1 downto PIXELSIZE*(i-1)-PIXELSIZE)), PIXELSIZE*2-1)
+                                      + unsigned(buffered(1)(PIXELSIZE*(i)-1 downto PIXELSIZE*(i)-PIXELSIZE))
+                                      + unsigned(buffered(1)(PIXELSIZE*(i+1)-1 downto PIXELSIZE*(i+1)-PIXELSIZE))
+                                      + unsigned(buffered(0)(PIXELSIZE*(i-1)-1 downto PIXELSIZE*(i-1)-PIXELSIZE))
+                                      + unsigned(buffered(0)(PIXELSIZE*(i)-1 downto PIXELSIZE*(i)-PIXELSIZE))
+                                      + unsigned(buffered(0)(PIXELSIZE*(i+1)-1 downto PIXELSIZE*(i+1)-PIXELSIZE))) / 6, PIXELSIZE));
+                            end loop;
+    
+                            -- Rightside corner pixel 2x2
+                            m_axi_data(PIXELSIZE*IMAGEWIDTH-1 downto PIXELSIZE*IMAGEWIDTH-PIXELSIZE) <= std_logic_vector(resize((
+                                    resize(unsigned(buffered(1)(PIXELSIZE*(IMAGEWIDTH-1)-1 downto PIXELSIZE*(IMAGEWIDTH-1)-PIXELSIZE)), PIXELSIZE*2-1)
+                                  + unsigned(buffered(1)(PIXELSIZE*IMAGEWIDTH-1 downto PIXELSIZE*IMAGEWIDTH-PIXELSIZE))
+                                  + unsigned(buffered(0)(PIXELSIZE*(IMAGEWIDTH-1)-1 downto PIXELSIZE*(IMAGEWIDTH-1)-PIXELSIZE))
+                                  + unsigned(buffered(0)(PIXELSIZE*IMAGEWIDTH-1 downto PIXELSIZE*IMAGEWIDTH-PIXELSIZE))) / 4, PIXELSIZE));
+                            
+                            m_axi_last <= '1';
+                            buffered <= buffered(1) & s_axi_data;
+                            heightPointer <= heightPointer + 1;
+                            m_axi_valid <= '1';
+                            state <= RECEIVE;
                         end if;
 
                     when MIDDLE =>
-                        -- Leftside pixel 3x2
-                        temp := temp + unsigned(buffered(0)(PIXELSIZE-1 downto 0));
-                        temp := temp + unsigned(buffered(0)(PIXELSIZE*2-1 downto PIXELSIZE));
-                        temp := temp + unsigned(buffered(1)(PIXELSIZE-1 downto 0));
-                        temp := temp + unsigned(buffered(1)(PIXELSIZE*2-1 downto PIXELSIZE));
-                        temp := temp + unsigned(buffered(2)(PIXELSIZE-1 downto 0));
-                        temp := temp + unsigned(buffered(2)(PIXELSIZE*2-1 downto PIXELSIZE));
-                        temp := temp / 6;
-                        m_axi_data(PIXELSIZE-1 downto 0) <= std_logic_vector(resize(temp, PIXELSIZE));
-                        temp := (others => '0');
-
-                        -- Middle pixel 3x3
-                        for i in 2 to IMAGEWIDTH-1 loop
-                            temp := temp + unsigned(buffered(0)(PIXELSIZE*(i-1)-1 downto PIXELSIZE*(i-1)-PIXELSIZE));
-                            temp := temp + unsigned(buffered(0)(PIXELSIZE*(i)-1 downto PIXELSIZE*(i)-PIXELSIZE));
-                            temp := temp + unsigned(buffered(0)(PIXELSIZE*(i+1)-1 downto PIXELSIZE*(i+1)-PIXELSIZE));
-                            temp := temp + unsigned(buffered(1)(PIXELSIZE*(i-1)-1 downto PIXELSIZE*(i-1)-PIXELSIZE));
-                            temp := temp + unsigned(buffered(1)(PIXELSIZE*(i)-1 downto PIXELSIZE*(i)-PIXELSIZE));
-                            temp := temp + unsigned(buffered(1)(PIXELSIZE*(i+1)-1 downto PIXELSIZE*(i+1)-PIXELSIZE));
-                            temp := temp + unsigned(buffered(2)(PIXELSIZE*(i-1)-1 downto PIXELSIZE*(i-1)-PIXELSIZE));
-                            temp := temp + unsigned(buffered(2)(PIXELSIZE*(i)-1 downto PIXELSIZE*(i)-PIXELSIZE));
-                            temp := temp + unsigned(buffered(2)(PIXELSIZE*(i+1)-1 downto PIXELSIZE*(i+1)-PIXELSIZE));
-                            temp := temp / 9;
-                            m_axi_data(PIXELSIZE*i-1 downto PIXELSIZE*i-PIXELSIZE) <= std_logic_vector(resize(temp, PIXELSIZE));
-                            temp := (others => '0');
-                        end loop;
-
-                        -- Rightside pixel 3x2
-                        temp := temp + unsigned(buffered(0)(PIXELSIZE*(IMAGEWIDTH-1)-1 downto PIXELSIZE*(IMAGEWIDTH-1)-PIXELSIZE));
-                        temp := temp + unsigned(buffered(0)(PIXELSIZE*IMAGEWIDTH-1 downto PIXELSIZE*IMAGEWIDTH-PIXELSIZE));
-                        temp := temp + unsigned(buffered(1)(PIXELSIZE*(IMAGEWIDTH-1)-1 downto PIXELSIZE*(IMAGEWIDTH-1)-PIXELSIZE));
-                        temp := temp + unsigned(buffered(1)(PIXELSIZE*IMAGEWIDTH-1 downto PIXELSIZE*IMAGEWIDTH-PIXELSIZE));
-                        temp := temp + unsigned(buffered(2)(PIXELSIZE*(IMAGEWIDTH-1)-1 downto PIXELSIZE*(IMAGEWIDTH-1)-PIXELSIZE));
-                        temp := temp + unsigned(buffered(2)(PIXELSIZE*IMAGEWIDTH-1 downto PIXELSIZE*IMAGEWIDTH-PIXELSIZE));
-                        temp := temp / 6;
-                        m_axi_data(PIXELSIZE*IMAGEWIDTH-1 downto PIXELSIZE*IMAGEWIDTH-PIXELSIZE) <= std_logic_vector(resize(temp, PIXELSIZE));
-                        temp := (others => '0');
-
                         if s_axi_valid = '1' then
-                            buffered <= buffered(1 to 2) & s_axi_data;
+                            -- Leftside pixel 3x2
+                            m_axi_data(PIXELSIZE-1 downto 0) <= std_logic_vector(resize((
+                                    resize(unsigned(buffered(0)(PIXELSIZE-1 downto 0)), PIXELSIZE*2-1)
+                                  + unsigned(buffered(0)(PIXELSIZE*2-1 downto PIXELSIZE))
+                                  + unsigned(buffered(1)(PIXELSIZE-1 downto 0))
+                                  + unsigned(buffered(1)(PIXELSIZE*2-1 downto PIXELSIZE))
+                                  + unsigned(s_axi_data(PIXELSIZE-1 downto 0))
+                                  + unsigned(s_axi_data(PIXELSIZE*2-1 downto PIXELSIZE))) / 6, PIXELSIZE));
+    
+                            -- Middle pixel 3x3
+                            for i in 2 to IMAGEWIDTH-1 loop
+                                m_axi_data(PIXELSIZE*i-1 downto PIXELSIZE*i-PIXELSIZE) <= std_logic_vector(resize((
+                                        resize(unsigned(buffered(0)(PIXELSIZE*(i-1)-1 downto PIXELSIZE*(i-1)-PIXELSIZE)), PIXELSIZE*2-1)
+                                      + unsigned(buffered(0)(PIXELSIZE*(i)-1 downto PIXELSIZE*(i)-PIXELSIZE))
+                                      + unsigned(buffered(0)(PIXELSIZE*(i+1)-1 downto PIXELSIZE*(i+1)-PIXELSIZE))
+                                      + unsigned(buffered(1)(PIXELSIZE*(i-1)-1 downto PIXELSIZE*(i-1)-PIXELSIZE))
+                                      + unsigned(buffered(1)(PIXELSIZE*(i)-1 downto PIXELSIZE*(i)-PIXELSIZE))
+                                      + unsigned(buffered(1)(PIXELSIZE*(i+1)-1 downto PIXELSIZE*(i+1)-PIXELSIZE))
+                                      + unsigned(s_axi_data(PIXELSIZE*(i-1)-1 downto PIXELSIZE*(i-1)-PIXELSIZE))
+                                      + unsigned(s_axi_data(PIXELSIZE*(i)-1 downto PIXELSIZE*(i)-PIXELSIZE))
+                                      + unsigned(s_axi_data(PIXELSIZE*(i+1)-1 downto PIXELSIZE*(i+1)-PIXELSIZE))) / 9, PIXELSIZE));
+                            end loop;
+    
+                            -- Rightside pixel 3x2
+                            m_axi_data(PIXELSIZE*IMAGEWIDTH-1 downto PIXELSIZE*IMAGEWIDTH-PIXELSIZE) <= std_logic_vector(resize((
+                                    resize(unsigned(buffered(0)(PIXELSIZE*(IMAGEWIDTH-1)-1 downto PIXELSIZE*(IMAGEWIDTH-1)-PIXELSIZE)), PIXELSIZE*2-1)
+                                  + unsigned(buffered(0)(PIXELSIZE*IMAGEWIDTH-1 downto PIXELSIZE*IMAGEWIDTH-PIXELSIZE))
+                                  + unsigned(buffered(1)(PIXELSIZE*(IMAGEWIDTH-1)-1 downto PIXELSIZE*(IMAGEWIDTH-1)-PIXELSIZE))
+                                  + unsigned(buffered(1)(PIXELSIZE*IMAGEWIDTH-1 downto PIXELSIZE*IMAGEWIDTH-PIXELSIZE))
+                                  + unsigned(s_axi_data(PIXELSIZE*(IMAGEWIDTH-1)-1 downto PIXELSIZE*(IMAGEWIDTH-1)-PIXELSIZE))
+                                  + unsigned(s_axi_data(PIXELSIZE*IMAGEWIDTH-1 downto PIXELSIZE*IMAGEWIDTH-PIXELSIZE))) / 6, PIXELSIZE));
+    
+                            buffered <= buffered(1) & s_axi_data;
+                            heightPointer <= heightPointer + 1;
+                            m_axi_valid <= '1';
                         end if;
-                        
-                        heightPointer <= heightPointer + 1;
-                        m_axi_valid <= '1';
 
-                        if heightPointer = IMAGEHEIGHT-3 then
+                        if heightPointer = IMAGEHEIGHT-2 then
                             s_axi_ready <= '0';
-                        elsif heightPointer = IMAGEHEIGHT-2 then
                             state <= SIDE;
                         else
                             state <= MIDDLE;

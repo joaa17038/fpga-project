@@ -11,7 +11,7 @@ end entity;
 
 architecture sim of testbench is
 
-    constant PIXELSIZE : integer := 4;
+    constant PIXELSIZE : integer := 8;
     constant IMAGEWIDTH : integer := 8;
     constant IMAGEHEIGHT : integer := 8;
 
