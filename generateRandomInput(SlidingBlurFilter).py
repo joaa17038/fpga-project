@@ -67,7 +67,7 @@ def saveToFile(filename, matrix):
     with open(filename, 'w') as f:
         for row in matrix:
             row = np.flip(row)
-            f.writelines('%0.2X' % pixel for pixel in row)
+            f.writelines('%0.01X' % pixel for pixel in row)
             f.write('\n')
 
 
