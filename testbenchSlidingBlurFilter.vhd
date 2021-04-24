@@ -12,19 +12,19 @@ end entity;
 architecture sim of testbench is
 
     constant PIXELSIZE : integer := 8;
-    constant IMAGEWIDTH : integer := 8;
-    constant IMAGEHEIGHT : integer := 8;
+    constant PACKETSIZE : integer := 64;
 
     signal clk : std_logic := '1';
     signal rst: std_logic := '1';
 
-    signal m_axi_data : std_logic_vector(IMAGEWIDTH*PIXELSIZE-1 downto 0) := (others => '0');
-    signal assertRow : std_logic_vector(IMAGEWIDTH*PIXELSIZE-1 downto 0) := (others => '0');
+    signal m_axi_data : std_logic_vector(PACKETSIZE*PIXELSIZE-1 downto 0) := (others => '0');
+    signal m_axi_dim : std_logic_vector(23 downto 0) := (others => '0');
+    signal assertRow : std_logic_vector(PACKETSIZE*PIXELSIZE-1 downto 0) := (others => '0');
     signal m_axi_valid: std_logic := '0';
     signal m_axi_ready: std_logic;
     signal m_axi_last: std_logic := '0';
 
-    signal s_axi_data : std_logic_vector(IMAGEWIDTH*PIXELSIZE-1 downto 0);
+    signal s_axi_data : std_logic_vector(PACKETSIZE*PIXELSIZE-1 downto 0);
     signal s_axi_valid : std_logic;
     signal s_axi_ready : std_logic := '1';
     signal s_axi_last : std_logic;
@@ -45,11 +45,11 @@ begin
 
         file simulationFile : text is in "./simulation.in";
         variable line_v : line;
-        variable simulation : std_logic_vector(IMAGEWIDTH*PIXELSIZE-1 downto 0);
+        variable simulation : std_logic_vector(PACKETSIZE*PIXELSIZE-1 downto 0);
 
         file assertionFile : text is in "./assertion.in";
         variable line_v2 : line;
-        variable assertion : std_logic_vector(IMAGEWIDTH*PIXELSIZE-1 downto 0);
+        variable assertion : std_logic_vector(PACKETSIZE*PIXELSIZE-1 downto 0);
 
     begin
 
@@ -67,12 +67,14 @@ begin
                 hread(line_v, simulation);
                 m_axi_data <= simulation;
                 m_axi_valid <= '1';
+                m_axi_dim <= X"040040"; -- HEIGHT:WIDTH
                 if endfile(simulationFile) then
                     m_axi_last <= '1';
                 end if;
             else
                 m_axi_valid <= '0';
                 m_axi_last <= '0';
+                m_axi_dim <= (others => '0');
                 m_axi_data <= (others => '0');
             end if;
 
@@ -91,14 +93,14 @@ begin
     i_SlidingBlurFilterV1 : entity work.slidingBlurFilterV1(rtl)
     generic map (
         PIXELSIZE => PIXELSIZE,
-        IMAGEWIDTH => IMAGEWIDTH,
-        IMAGEHEIGHT => IMAGEHEIGHT)
+        PACKETSIZE => PACKETSIZE)
     port map (
         clk => clk,
         rst => rst,
         s_axi_valid => m_axi_valid,
         s_axi_ready => m_axi_ready,
         s_axi_data => m_axi_data,
+        s_axi_dim => m_axi_dim,
         s_axi_last => m_axi_last,
         m_axi_valid => s_axi_valid,
         m_axi_ready => s_axi_ready,
