@@ -62,7 +62,7 @@ begin
             m_axi_last <= '0';
 
         else
-            if not endfile(simulationFile) then
+            if not endfile(simulationFile) and m_axi_ready = '1' then
                 readline(simulationFile, line_v);
                 hread(line_v, simulation);
                 m_axi_data <= simulation;
@@ -71,7 +71,7 @@ begin
                     m_axi_last <= '1';
                 end if;
             else
-                --m_axi_valid <= '0';
+                m_axi_valid <= '0';
                 m_axi_last <= '0';
                 m_axi_data <= (others => '0');
             end if;
