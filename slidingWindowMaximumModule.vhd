@@ -20,16 +20,13 @@ end entity;
 
 architecture rtl of slidingWindowMaximum is
 
-    type mem is array(WINDOWSIZE-1 downto 0) of std_logic_vector(DATAWIDTH-1 downto 0);
+    type mem is array(0 to WINDOWSIZE-1) of std_logic_vector(DATAWIDTH-1 downto 0);
     signal countInput : integer range 0 to WINDOWSIZE-1 := 0;
-    signal internalValid : std_logic := '0';
     signal memory: mem;
 
 begin
 
-    maxValid <= internalValid; -- Assign to output signal
-
-    memory <= memory(WINDOWSIZE-2 downto 0) & inputNumber; -- Shift the window
+    memory <= memory(1 to WINDOWSIZE-1) & inputNumber;
 
     process (clk)
 
@@ -40,11 +37,11 @@ begin
         if rising_edge(clk) then
 
             if rst = '1' then
-                internalValid <= '0';
+                maxValid <= '0';
                 max <= (others => '0');
             else
-                if countInput = WINDOWSIZE or internalValid = '1' then
-                    internalValid <= '1'; -- Set maximum valid
+                if countInput = WINDOWSIZE then
+                    maxValid <= '1'; -- Set maximum valid
                     for i in 0 to WINDOWSIZE-1 loop
                         if memory(i) > tempMax then
                             tempMax := memory(i);
