@@ -7,7 +7,7 @@ import sys
 
 np.set_printoptions(threshold=sys.maxsize)
 SIMULATIONFILE, ASSERTIONFILE = sys.argv[1], sys.argv[2]
-DIMENSION, PIXELSIZE = int(sys.argv[3]), int(sys.argv[4])
+DIMENSION, PIXELSIZE, DELAY = int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5])
 
 
 def averageFilter(dim, src):
@@ -63,8 +63,11 @@ def convertToMatrix(dimension, array):
     return [array[i:i+dimension] for i in range(0, len(array), dimension)]
 
 
-def saveToFile(filename, matrix):
+def saveToFile(filename, matrix, delay=0):
     with open(filename, 'w') as f:
+        if delay:
+            for i in range(delay):
+                f.write("00"*matrix.shape[0] + "\n")
         for row in matrix:
             row = np.flip(row)
             f.writelines('%0.02X' % pixel for pixel in row)
@@ -77,7 +80,7 @@ simulation = np.asarray(convertToMatrix(DIMENSION, source))
 assertions = np.asarray(convertToMatrix(DIMENSION, averageFilter(DIMENSION, inputArray)))
 
 saveToFile(SIMULATIONFILE, simulation)
-saveToFile(ASSERTIONFILE, assertions)
+saveToFile(ASSERTIONFILE, assertions, DELAY)
 
 #inputArray = source.copy()
 #inputMatrix = np.asarray(convertToMatrix(dimension, source.copy()))
