@@ -62,7 +62,8 @@ begin
             m_axi_last <= '0';
 
         else
-            if not endfile(simulationFile) and m_axi_ready = '1' then
+            s_axi_ready <= not s_axi_ready;
+            if not endfile(simulationFile) and s_axi_ready = '1' then
                 readline(simulationFile, line_v);
                 hread(line_v, simulation);
                 m_axi_data <= simulation;
@@ -71,18 +72,19 @@ begin
                 if endfile(simulationFile) then
                     m_axi_last <= '1';
                 end if;
-            else
+            elsif endfile(simulationFile) and s_axi_ready = '1' then
                 m_axi_valid <= '0';
                 m_axi_last <= '0';
                 m_axi_dim <= (others => '0');
                 m_axi_data <= (others => '0');
             end if;
 
-            if not endfile(assertionFile) then
+            if not endfile(assertionFile) and s_axi_ready = '1' then
                 readline(assertionFile, line_v2);
                 hread(line_v2, assertion);
                 assertRow <= assertion;
-            else
+                assert s_axi_data = assertRow report "Incorrect " & integer'image(to_integer(unsigned(s_axi_data))) & " /= " & integer'image(to_integer(unsigned(assertRow)));
+            elsif endfile(assertionFile) and s_axi_ready = '1' then
                 assertRow <= (others => '0');
             end if;
 
