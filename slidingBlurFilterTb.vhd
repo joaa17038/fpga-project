@@ -13,7 +13,7 @@ architecture sim of testbench is
 
     constant PIXELSIZE : integer := 8;
     constant PACKETSIZE : integer := 64;
-    constant MAXIMAGEWIDTH : integer := 128;
+    constant MAXIMAGEWIDTH : integer := 3840; -- supports 64, 128, 192, 256, 320, 3840
     constant MAXIMAGEHEIGHT : integer := 2160;
 
     signal clk : std_logic := '1';
@@ -76,7 +76,7 @@ begin
             sim_valid2 <= '0';
             module_ready2 <= '0';
             if sim_ready2 = '1' and module_ready2 = '1' then
-                sim_data2 <= X"080080"; -- HEIGHT:WIDTH
+                sim_data2 <= X"080080"; -- HEIGHT:WIDTH, 040040, 080080, 0C00C0, 100100, 140140, F00F00
                 sim_valid2 <= '1';
                 module_ready2 <= '1';
                 module_ready <= '1';

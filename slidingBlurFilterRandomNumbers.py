@@ -68,9 +68,9 @@ def saveToFile(filename, matrix, delay=0):
         if delay:
             for i in range(delay):
                 if DIMENSION == 64:
-                    f.write("00"*(matrix.shape[0]) + "\n")
+                    f.write("00"*64 + "\n")
                 else:
-                    f.write("00"*(matrix.shape[0]//2) + "\n")
+                    f.write("00"*64 + "\n")
         for row in matrix:
             row = np.split(row, DIMENSION/64)
             for i in row:

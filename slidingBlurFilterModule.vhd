@@ -112,6 +112,7 @@ begin
                             end if;
 
                         when FILTER =>
+                            m_axi_data <= (others => '0');
                             if widthPointer = IMAGEWIDTHRATIO then
                                 m_axi_data(PIXELSIZE*PACKETSIZE-1 downto PIXELSIZE*PACKETSIZE-PIXELSIZE) <= std_logic_vector(resize((
                                     resize(unsigned(buffered(0)(PACKETBITS*widthPointer-1 downto PACKETBITS*widthPointer-PIXELSIZE)), PIXELSIZE*2-1)
@@ -148,6 +149,19 @@ begin
                                           + unsigned(buffered(2)(PIXELSIZE*(i-1)-1 downto PIXELSIZE*(i-1)-PIXELSIZE))
                                           + unsigned(buffered(2)(PIXELSIZE*(i)-1 downto PIXELSIZE*(i)-PIXELSIZE))
                                           + unsigned(buffered(2)(PIXELSIZE*(i+1)-1 downto PIXELSIZE*(i+1)-PIXELSIZE))) / divisorMiddle, PIXELSIZE));
+                                    end loop;
+                                else
+                                    for i in 0 to PACKETSIZE-1 loop
+                                        m_axi_data(PIXELSIZE*(PACKETSIZE-i)-1 downto PIXELSIZE*(PACKETSIZE-i)-PIXELSIZE) <= std_logic_vector(resize((
+                                            resize(unsigned(buffered(0)(PACKETBITS*widthPointer-PIXELSIZE*(i-1)-1 downto PACKETBITS*widthPointer-PIXELSIZE*(i-1)-PIXELSIZE)), PIXELSIZE*2-1)
+                                          + unsigned(buffered(0)(PACKETBITS*widthPointer-PIXELSIZE*(i)-1 downto PACKETBITS*widthPointer-PIXELSIZE*(i)-PIXELSIZE))
+                                          + unsigned(buffered(0)(PACKETBITS*widthPointer-PIXELSIZE*(i+1)-1 downto PACKETBITS*widthPointer-PIXELSIZE*(i+1)-PIXELSIZE))
+                                          + unsigned(buffered(1)(PACKETBITS*widthPointer-PIXELSIZE*(i-1)-1 downto PACKETBITS*widthPointer-PIXELSIZE*(i-1)-PIXELSIZE))
+                                          + unsigned(buffered(1)(PACKETBITS*widthPointer-PIXELSIZE*(i)-1 downto PACKETBITS*widthPointer-PIXELSIZE*(i)-PIXELSIZE))
+                                          + unsigned(buffered(1)(PACKETBITS*widthPointer-PIXELSIZE*(i+1)-1 downto PACKETBITS*widthPointer-PIXELSIZE*(i+1)-PIXELSIZE))
+                                          + unsigned(buffered(2)(PACKETBITS*widthPointer-PIXELSIZE*(i-1)-1 downto PACKETBITS*widthPointer-PIXELSIZE*(i-1)-PIXELSIZE))
+                                          + unsigned(buffered(2)(PACKETBITS*widthPointer-PIXELSIZE*(i)-1 downto PACKETBITS*widthPointer-PIXELSIZE*(i)-PIXELSIZE))
+                                          + unsigned(buffered(2)(PACKETBITS*widthPointer-PIXELSIZE*(i+1)-1 downto PACKETBITS*widthPointer-PIXELSIZE*(i+1)-PIXELSIZE))) / divisorMiddle, PIXELSIZE));
                                     end loop;
                                 end if;
                             elsif IMAGEWIDTHRATIO = 1 then
