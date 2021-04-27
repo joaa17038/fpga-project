@@ -67,11 +67,15 @@ def saveToFile(filename, matrix, delay=0):
     with open(filename, 'w') as f:
         if delay:
             for i in range(delay):
-                f.write("00"*matrix.shape[0] + "\n")
+                if DIMENSION == 64:
+                    f.write("00"*(matrix.shape[0]) + "\n")
+                else:
+                    f.write("00"*(matrix.shape[0]//2) + "\n")
         for row in matrix:
-            row = np.flip(row)
-            f.writelines('%0.02X' % pixel for pixel in row)
-            f.write('\n')
+            row = np.split(row, DIMENSION/64)
+            for i in row:
+                f.writelines('%0.02X' % pixel for pixel in i)
+                f.write('\n')
 
 
 source = choices(range(0, 2**PIXELSIZE), k=DIMENSION**2)

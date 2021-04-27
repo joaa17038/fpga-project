@@ -13,20 +13,25 @@ architecture sim of testbench is
 
     constant PIXELSIZE : integer := 8;
     constant PACKETSIZE : integer := 64;
+    constant MAXIMAGEWIDTH : integer := 128;
+    constant MAXIMAGEHEIGHT : integer := 2160;
 
     signal clk : std_logic := '1';
-    signal rst: std_logic := '1';
+    signal rst : std_logic := '1';
 
-    signal sim_data : std_logic_vector(PACKETSIZE*PIXELSIZE-1 downto 0) := (others => '0');
-    signal sim_dim : std_logic_vector(23 downto 0) := (others => '0');
-    signal assertRow : std_logic_vector(PACKETSIZE*PIXELSIZE-1 downto 0) := (others => '0');
-    signal sim_valid: std_logic := '0';
-    signal sim_ready: std_logic;
-    signal sim_last: std_logic := '0';
+    signal sim_data : std_logic_vector(PACKETSIZE*PIXELSIZE-1 downto 0);
+    signal sim_data2 : std_logic_vector(23 downto 0);
+    signal assertRow : std_logic_vector(PACKETSIZE*PIXELSIZE-1 downto 0);
+    signal sim_valid: std_logic;
+    signal sim_valid2 : std_logic;
+    signal sim_ready : std_logic;
+    signal sim_ready2 : std_logic;
+    signal sim_last : std_logic;
 
     signal module_data : std_logic_vector(PACKETSIZE*PIXELSIZE-1 downto 0);
     signal module_valid : std_logic;
-    signal module_ready : std_logic := '1';
+    signal module_ready : std_logic;
+    signal module_ready2 : std_logic;
     signal module_last : std_logic;
 
 begin
@@ -57,34 +62,48 @@ begin
 
         if rst = '1' then
             sim_data <= (others => '0');
+            sim_data2 <= (others => '0');
+            assertRow <= (others => '0');
             sim_valid <= '0';
-            module_ready <= '1';
+            sim_valid2 <= '0';
+            module_ready <= '0';
+            module_ready2 <= '1';
             sim_last <= '0';
 
         else
+            -- Second Stream
+            sim_data2 <= X"000000";
+            sim_valid2 <= '0';
+            module_ready2 <= '0';
+            if sim_ready2 = '1' and module_ready2 = '1' then
+                sim_data2 <= X"080080"; -- HEIGHT:WIDTH
+                sim_valid2 <= '1';
+                module_ready2 <= '1';
+                module_ready <= '1';
+            end if;
+            
+            -- First Stream
             module_ready <= not module_ready;
-            if not endfile(simulationFile) and module_ready = '1' then
+            if not endfile(simulationFile) and module_ready = '1' and sim_ready = '1' then
                 readline(simulationFile, line_v);
                 hread(line_v, simulation);
                 sim_data <= simulation;
                 sim_valid <= '1';
-                sim_dim <= X"040040"; -- HEIGHT:WIDTH
                 if endfile(simulationFile) then
                     sim_last <= '1';
                 end if;
-            elsif endfile(simulationFile) and module_ready = '1' then
+            elsif endfile(simulationFile) and module_ready = '1' and sim_ready = '1' then
                 sim_valid <= '0';
-                sim_last <= '0';
-                sim_dim <= (others => '0');
                 sim_data <= (others => '0');
+                sim_last <= '0';
             end if;
 
-            if not endfile(assertionFile) and module_ready = '1' then
+            if not endfile(assertionFile) and module_ready = '1' and sim_ready = '0' then
                 readline(assertionFile, line_v2);
                 hread(line_v2, assertion);
                 assertRow <= assertion;
                 assert module_data = assertRow report "Incorrect " & integer'image(to_integer(unsigned(module_data))) & " /= " & integer'image(to_integer(unsigned(assertRow)));
-            elsif endfile(assertionFile) and module_ready = '1' then
+            elsif endfile(assertionFile) and module_ready = '1' and sim_ready = '1' then
                 assertRow <= (others => '0');
             end if;
 
@@ -95,18 +114,23 @@ begin
     i_SlidingBlurFilterV1 : entity work.slidingBlurFilterV1(rtl)
     generic map (
         PIXELSIZE => PIXELSIZE,
-        PACKETSIZE => PACKETSIZE)
+        PACKETSIZE => PACKETSIZE,
+        MAXIMAGEWIDTH => MAXIMAGEWIDTH,
+        MAXIMAGEHEIGHT => MAXIMAGEHEIGHT)
     port map (
         clk => clk,
         rst => rst,
         s_axi_valid => sim_valid,
         s_axi_ready => sim_ready,
         s_axi_data => sim_data,
-        s_axi_dim => sim_dim,
         s_axi_last => sim_last,
         m_axi_valid => module_valid,
         m_axi_ready => module_ready,
         m_axi_last => module_last,
-        m_axi_data => module_data);
+        m_axi_data => module_data,
+        s_axi_valid2 => sim_valid2,
+        s_axi_ready2 => sim_ready2,
+        s_axi_data2 => sim_data2,
+        m_axi_ready2 => module_ready2);
 
 end architecture;
