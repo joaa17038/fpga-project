@@ -5,9 +5,8 @@ from random import choices
 import numpy as np
 import sys
 
-np.set_printoptions(threshold=sys.maxsize)
-SIMULATIONFILE, ASSERTIONFILE = sys.argv[1], sys.argv[2]
-DIMENSION, PIXELSIZE, DELAY = int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5])
+SIMULATIONFILE, ASSERTIONFILE1, ASSERTIONFILE2 = sys.argv[1], sys.argv[2], sys.argv[3]
+DIMENSION, PIXELSIZE, DELAY = int(sys.argv[4]), int(sys.argv[5]), int(sys.argv[6])
 
 
 def averageFilter(dim, src):
@@ -65,28 +64,24 @@ def convertToMatrix(dimension, array):
 
 def saveToFile(filename, matrix, delay=0):
     with open(filename, 'w') as f:
-        if delay:
-            for i in range(delay):
-                if DIMENSION == 64:
-                    f.write("00"*64 + "\n")
-                else:
-                    f.write("00"*64 + "\n")
+        if delay: f.writelines("00"*64+"\n" for i in range(delay))
         for row in matrix:
             row = np.split(row, DIMENSION/64)
-            for i in row:
-                f.writelines('%0.02X' % pixel for pixel in i)
+            for packet in row:
+                f.writelines('%0.02X' % pixel for pixel in packet)
                 f.write('\n')
 
 
 source = choices(range(0, 2**PIXELSIZE), k=DIMENSION**2)
-inputArray = source.copy()
-simulation = np.asarray(convertToMatrix(DIMENSION, source))
-assertions = np.asarray(convertToMatrix(DIMENSION, averageFilter(DIMENSION, inputArray)))
+simulation = np.asarray(convertToMatrix(DIMENSION, source.copy()))
+assertions = averageFilter(DIMENSION, source.copy())
+assertionsOne = np.asarray(convertToMatrix(DIMENSION, assertions))
+assertionsTwo = np.asarray(convertToMatrix(DIMENSION, averageFilter(DIMENSION, assertions.copy())))
 
 saveToFile(SIMULATIONFILE, simulation)
-saveToFile(ASSERTIONFILE, assertions, DELAY)
+saveToFile(ASSERTIONFILE1, assertionsOne, DELAY)
+saveToFile(ASSERTIONFILE2, assertionsTwo, DELAY-1)
 
-#inputArray = source.copy()
 #inputMatrix = np.asarray(convertToMatrix(dimension, source.copy()))
 
 #result = np.asarray(convertToMatrix(dimension, averageFilter(dimension, inputArray, cval=1)))
