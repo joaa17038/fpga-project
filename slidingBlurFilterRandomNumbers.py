@@ -2,91 +2,98 @@
 from scipy import ndimage
 from collections import Counter
 from random import choices
+from PIL import Image
 import numpy as np
 import sys
 
+np.set_printoptions(threshold=sys.maxsize)
 SIMULATIONFILE, ASSERTIONFILE1, ASSERTIONFILE2 = sys.argv[1], sys.argv[2], sys.argv[3]
-DIMENSION, PIXELSIZE, DELAY = int(sys.argv[4]), int(sys.argv[5]), int(sys.argv[6])
+WIDTH, PACKETSIZE, PIXELSIZE, DELAY = int(sys.argv[4]), int(sys.argv[5]), int(sys.argv[6]), int(sys.argv[7])
 
 
-def averageFilter(dim, src):
-    dst = [0]*(dim**2)
+def averageFilter(src):
+    dst = np.zeros_like(src)
 
-    # Top-Left Corner, 2x2
-    dst[0] = (src[0] + src[1] + src[dim] + src[dim+1]) // 4
+    # TopLeft Corner
+    dst[0,0] = (src[0,0] + src[0,1]
+              + src[1,0] + src[1,1]) // 4
 
-    # Top-Right Corner, 2x2
-    dst[dim-1] = (src[dim-2] + src[dim-1] + src[dim*2-2] + src[dim*2-1]) // 4
+    # TopRight Corner
+    dst[0,dst.shape[1]-1] = (src[0,dst.shape[1]-2] + src[0,dst.shape[1]-1]
+                           + src[1,dst.shape[1]-2] + src[1,dst.shape[1]-1]) // 4
 
-    # Bottom-Left Corner, 2x2
-    dst[dim*(dim-1)] = (src[dim*(dim-1)] + src[dim*(dim-1)+1] + src[dim*(dim-2)] + src[dim*(dim-2)+1]) // 4
+    # BottomLeft Corner
+    dst[dst.shape[0]-1,0] = (src[dst.shape[0]-2,0] + src[dst.shape[0]-2,1]
+                           + src[dst.shape[0]-1,0] + src[dst.shape[0]-1,1]) // 4
 
-    # Bottom-Right Corner, 2x2
-    dst[dim*dim-1] = (src[dim*dim-1] + src[dim*dim-2] + src[dim*(dim-1)-1] + src[dim*(dim-1)-2]) // 4
+    # BottomRight Corner
+    dst[dst.shape[0]-1,dst.shape[1]-1] = (src[dst.shape[0]-2,dst.shape[1]-2] + src[dst.shape[0]-2,dst.shape[1]-1]
+                                        + src[dst.shape[0]-1,dst.shape[1]-2] + src[dst.shape[0]-1,dst.shape[1]-1]) // 4
 
-    # Top Side, 2x3
-    for i in range(1, (dim-1)):
-        dst[i] = (src[i-1] + src[i] + src[i+1] + src[i+dim-1] + src[i+dim] + src[i+dim+1]) // 6
+    # TopSide & BottomSide
+    for j in range(1, dst.shape[1]-1):
+        dst[0,j] = (src[0,j-1] + src[0,j] + src[0,j+1]
+                  + src[1,j-1] + src[1,j] + src[1,j+1]) // 6
 
-    # Bottom Side, 2x3
-    for i in range((dim*dim-dim+1), (dim*dim-1)):
-        dst[i] = (src[i-1] + src[i] + src[i+1] + src[i-dim-1] + src[i-dim] + src[i-dim+1]) // 6
+        dst[dst.shape[0]-1, j] = (src[dst.shape[0]-2,j-1] + src[dst.shape[0]-2,j] + src[dst.shape[0]-2,j+1]
+                                + src[dst.shape[0]-1,j-1] + src[dst.shape[0]-1,j] + src[dst.shape[0]-1,j+1]) // 6
 
-    # Right Side, 2x3
-    for i in range((dim+dim-1), (dim*dim-1), dim):
-        dst[i] = (src[i-1] + src[i] + src[i-dim] + src[i-dim-1] + src[i+dim-1] + src[i+dim]) // 6
+    # LeftSide & RightSide
+    for i in range(1, dst.shape[0]-1):
+        dst[i,0] = (src[i-1,0] + src[i-1,1]
+                  + src[i,0]   + src[i,1]
+                  + src[i+1,0] + src[i+1,1]) // 6
 
-    # Left Side, 2x3
-    for i in range(dim, (dim*dim-dim), dim):
-        dst[i] = (src[i-dim] + src[i-dim+1] + src[i] + src[i+1] + src[i+dim] + src[i+dim+1]) // 6
+        dst[i,dst.shape[1]-1] = (src[i-1,dst.shape[1]-2] + src[i-1,dst.shape[1]-1]
+                               + src[i,dst.shape[1]-2]   + src[i,dst.shape[1]-1]
+                               + src[i+1,dst.shape[1]-2] + src[i+1,dst.shape[1]-1]) // 6
 
-    # Middle, 3x3
-    squareMiddleIdx = dim
-    for i in range(1, (dim-1)):
-        for j in range(1, (dim-1)):
-            squareMiddleIdx += 1
-            dst[squareMiddleIdx] = (src[squareMiddleIdx-dim+1]
-                                 + src[squareMiddleIdx-dim]
-                                 + src[squareMiddleIdx-dim-1]
-                                 + src[squareMiddleIdx-1]
-                                 + src[squareMiddleIdx]
-                                 + src[squareMiddleIdx+1]
-                                 + src[squareMiddleIdx+dim-1]
-                                 + src[squareMiddleIdx+dim]
-                                 + src[squareMiddleIdx+dim+1]) // 9
-        squareMiddleIdx += 2
+    # Middle
+    for i in range(1, dst.shape[0]-1): # row-wise
+        for j in range(1, dst.shape[1]-1): # column-wise
+            dst[i,j] = (src[i-1,j-1] + src[i-1,j] + src[i-1,j+1]
+                      + src[i,j-1]   + src[i,j]   + src[i,j+1]
+                      + src[i+1,j-1] + src[i+1,j] + src[i+1,j+1]) // 9
     return dst
 
 
 def convertToMatrix(dimension, array):
-    return [array[i:i+dimension] for i in range(0, len(array), dimension)]
+    return np.asarray([array[i:i+dimension] for i in range(0, len(array), dimension)])
 
 
 def saveToFile(filename, matrix, delay=0):
     with open(filename, 'w') as f:
-        if delay: f.writelines("00"*64+"\n" for i in range(delay))
+        if delay: f.writelines("00"*PACKETSIZE+"\n" for i in range(delay))
         for row in matrix:
-            row = np.split(row, DIMENSION/64)
+            row = np.split(row, WIDTH/PACKETSIZE)
             for packet in row:
                 f.writelines('%0.02X' % pixel for pixel in packet)
                 f.write('\n')
 
+def displayImage(matrix):
+    return Image.fromarray(matrix.copy().astype("uint8"), 'L')
 
-source = choices(range(0, 2**PIXELSIZE), k=DIMENSION**2)
-simulation = np.asarray(convertToMatrix(DIMENSION, source.copy()))
-assertions = averageFilter(DIMENSION, source.copy())
-assertionsOne = np.asarray(convertToMatrix(DIMENSION, assertions))
-assertionsTwo = np.asarray(convertToMatrix(DIMENSION, averageFilter(DIMENSION, assertions.copy())))
+
+#source = choices(range(0, 2**PIXELSIZE), k=DIMENSION**2)
+source = np.array(Image.open("../images/black.jpg").convert("L")).astype("uint16")
+simulation = source.copy()
+assertionsOne = averageFilter(source.copy())
+assertionsTwo = averageFilter(assertionsOne.copy())
 
 saveToFile(SIMULATIONFILE, simulation)
 saveToFile(ASSERTIONFILE1, assertionsOne, DELAY)
 saveToFile(ASSERTIONFILE2, assertionsTwo, DELAY-1)
 
-#inputMatrix = np.asarray(convertToMatrix(dimension, source.copy()))
+displayImage(simulation).save("src.png")
+filtered = source.copy()
+for i in range(2):
+    filtered = averageFilter(filtered)
+    displayImage(filtered.copy()).save(f"filter{i}.png")
 
+
+#inputMatrix = np.asarray(convertToMatrix(dimension, source.copy()))
 #result = np.asarray(convertToMatrix(dimension, averageFilter(dimension, inputArray, cval=1)))
 #test = ndimage.filters.convolve(inputMatrix, np.full((3, 3), 1/9), mode='constant', cval=1)
-
 #output = np.array(result == test)
 #count = Counter(output.flatten())
 #print(result - test, '\n')
