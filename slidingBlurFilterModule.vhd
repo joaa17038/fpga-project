@@ -7,45 +7,67 @@ use ieee.numeric_std.all;
 entity slidingBlurFilterV1 is
 generic (PIXELSIZE, PACKETSIZE, MAXIMAGEWIDTH, MAXIMAGEHEIGHT: integer);
 port (
-    clk : in std_logic;
-    rst : in std_logic;
+    clk : in std_logic; -- Clock
+    rst : in std_logic; -- Reset
 
-    s_axi_pixels_valid : in std_logic;
-    s_axi_pixels_ready : out std_logic;
-    s_axi_pixels_data : in std_logic_vector(PIXELSIZE*PACKETSIZE-1 downto 0);
-    s_axi_pixels_last : in std_logic;
-    m_axi_pixels_valid : out std_logic;
-    m_axi_pixels_ready : in std_logic;
-    m_axi_pixels_last : out std_logic;
-    m_axi_pixels_data : out std_logic_vector(PIXELSIZE*PACKETSIZE-1 downto 0);
+    s_axi_pixels_data : in std_logic_vector(PIXELSIZE*PACKETSIZE-1 downto 0); -- Input data
+    s_axi_pixels_valid : in std_logic; -- Input valid
+    s_axi_pixels_last : in std_logic; -- Input last
+    s_axi_pixels_ready : out std_logic; -- Output ready
 
-    s_axi_dimensions_valid : in std_logic;
-    s_axi_dimensions_ready : out std_logic;
-    s_axi_dimensions_data : in std_logic_vector(23 downto 0);
-    m_axi_dimensions_ready : in std_logic);
+    m_axi_pixels_data : out std_logic_vector(PIXELSIZE*PACKETSIZE-1 downto 0); -- Output data
+    m_axi_pixels_valid : out std_logic; -- Output valid
+    m_axi_pixels_last : out std_logic; -- Output last
+    m_axi_pixels_ready : in std_logic; -- Input ready
+
+    s_axi_dimensions_data : in std_logic_vector(23 downto 0); -- Input data
+    s_axi_dimensions_valid : in std_logic; -- Input valid
+    s_axi_dimensions_ready : out std_logic; -- Output ready
+    m_axi_dimensions_ready : in std_logic); -- Input ready
 end entity;
 
 
 architecture rtl of slidingBlurFilterV1 is
 
-    type typeState is (DIM, RECEIVE, FILTER);
-    type threeRows is array(0 to 2) of std_logic_vector(PIXELSIZE*PACKETSIZE*(MAXIMAGEWIDTH/PACKETSIZE)-1 downto 0);
+    type threeRows is array(0 to 2) of std_logic_vector(PIXELSIZE*PACKETSIZE*(MAXIMAGEWIDTH/PACKETSIZE)-1 downto 0); -- Buffered rows
+    type typeState is (DIM, RECEIVE, FILTER); -- Finite State Machine for dimensions, pixels, and filter
 
-    constant ZERO : std_logic_vector(PIXELSIZE*PACKETSIZE-1 downto 0) := (others => '0');
-    constant PACKETBITS : integer := PIXELSIZE*PACKETSIZE;
+    constant PACKETBITS : integer := PIXELSIZE*PACKETSIZE; -- Total number of bits in each packet
+    constant ZERO : std_logic_vector(PACKETBITS-1 downto 0) := (others => '0'); -- Zero padding for the image
 
-    signal state : typeState := RECEIVE;
+    signal state : typeState := DIM; -- Initial state for receiving image dimensions
     signal buffered : threeRows := (others => (others => '0'));
+    signal restart : std_logic := '0'; -- Reset the signals for the next image
 
-    signal restart : std_logic := '0';
-    signal heightPointer : unsigned(11 downto 0) := (others => '0');
-    signal widthPointer : integer range 1 to MAXIMAGEWIDTH/PACKETSIZE := 1;
-    signal bWidthPointer : integer range 0 to MAXIMAGEWIDTH/PACKETSIZE := 0;
-    signal bHeightPointer : integer range 0 to 2 := 1;
-    signal IMAGEHEIGHT : integer range 0 to MAXIMAGEHEIGHT := 0;
-    signal IMAGEWIDTHRATIO : integer range 0 to MAXIMAGEWIDTH/PACKETSIZE := 0;
-    signal divisorSide : unsigned(3 downto 0) := (others => '0');
-    signal divisorMiddle : unsigned(3 downto 0) := (others => '0');
+    signal heightPointer : integer range 0 to MAXIMAGEHEIGHT; -- Height pointer for the image
+    signal widthPointer : integer range 1 to MAXIMAGEWIDTH/PACKETSIZE; -- Width pointer for the image
+
+    signal bWidthPointer : integer range 0 to MAXIMAGEWIDTH/PACKETSIZE; -- Width pointer for the buffered packets
+    signal bHeightPointer : integer range 0 to 2; -- Height pointer for the buffered rows
+
+    signal IMAGEHEIGHT : integer range 0 to MAXIMAGEHEIGHT; -- The height of the image
+    signal IMAGEWIDTHRATIO : integer range 0 to MAXIMAGEWIDTH/PACKETSIZE; -- The packet width of the image
+
+    signal divisorSide : unsigned(3 downto 0); -- Side divisor for the filter
+    signal divisorMiddle : unsigned(3 downto 0); -- Middle divisor for the filter
+
+    procedure middle(signal packet : out std_logic_vector(PACKETBITS-1 downto 0);
+                     constant p1 : in integer; constant p2 : in integer;
+                     constant a1 : in integer; constant a2 : in integer;
+                     constant b1 : in integer; constant b2 : in integer;
+                     constant c1 : in integer; constant c2 : in integer) is
+    begin
+        packet(p1 downto p2) <= std_logic_vector(resize((
+            resize(unsigned(buffered(0)(a1 downto a2)), PIXELSIZE*2-1)
+          + unsigned(buffered(0)(b1 downto b2))
+          + unsigned(buffered(0)(c1 downto c2))
+          + unsigned(buffered(1)(a1 downto a2))
+          + unsigned(buffered(1)(b1 downto b2))
+          + unsigned(buffered(1)(c1 downto c2))
+          + unsigned(buffered(2)(a1 downto a2))
+          + unsigned(buffered(2)(b1 downto b2))
+          + unsigned(buffered(2)(c1 downto c2))) / divisorMiddle, PIXELSIZE));
+    end procedure;
 
 begin
 
@@ -56,19 +78,21 @@ begin
             if rst = '1' or (restart = '1' and m_axi_pixels_ready = '1') then
                 s_axi_pixels_ready <= '0';
                 s_axi_dimensions_ready <= '1';
-                m_axi_pixels_last <= '0';
-                m_axi_pixels_valid <= '0';
+
                 m_axi_pixels_data <= (others => '0');
+                m_axi_pixels_valid <= '0';
+                m_axi_pixels_last <= '0';
 
                 state <= DIM;
+                buffered <= (others => (others => '0'));
                 restart <= '0';
-                buffered <= (others => (others =>'0'));
+
                 bHeightPointer <= 0;
-                bWidthPointer <= 0;
-                heightPointer <= (others => '0');
-                widthPointer <= 1;
+                heightPointer <= 0;
+
                 IMAGEHEIGHT <= 0;
                 IMAGEWIDTHRATIO <= 0;
+
                 divisorSide <= X"4";
                 divisorMiddle <= X"6";
 
@@ -78,7 +102,7 @@ begin
                     m_axi_pixels_valid <= '0';
 
                     case state is
-                        when DIM =>
+                        when DIM => -- Receive image dimensions
                             if m_axi_dimensions_ready = '1' and s_axi_dimensions_valid = '1' then
                                 IMAGEHEIGHT <= to_integer(unsigned(s_axi_dimensions_data(23 downto 12)));
                                 IMAGEWIDTHRATIO <= to_integer(unsigned(s_axi_dimensions_data(11 downto 0)))/PACKETSIZE;
@@ -89,7 +113,7 @@ begin
                                 state <= RECEIVE;
                             end if;
 
-                        when RECEIVE =>
+                        when RECEIVE => -- Receive pixel packets
                             if s_axi_pixels_valid = '1' or heightPointer > IMAGEHEIGHT-2 then
                                 if s_axi_pixels_valid = '1' then
                                     buffered(bHeightPointer)(PACKETBITS*bWidthPointer-1 downto PACKETBITS*(bWidthPointer-1)) <= s_axi_pixels_data;
@@ -113,7 +137,7 @@ begin
                                 end if;
                             end if;
 
-                        when FILTER =>
+                        when FILTER => -- Filter pixel packets
                             m_axi_pixels_data <= (others => '0');
                             if widthPointer = IMAGEWIDTHRATIO then
                                 m_axi_pixels_data(PIXELSIZE*PACKETSIZE-1 downto PIXELSIZE*PACKETSIZE-PIXELSIZE) <= std_logic_vector(resize((
@@ -125,59 +149,35 @@ begin
                                   + unsigned(buffered(2)(PACKETBITS*widthPointer-PIXELSIZE-1 downto PACKETBITS*widthPointer-PIXELSIZE*2))) / divisorSide, PIXELSIZE));
                             end if;
 
-                            if IMAGEWIDTHRATIO > 1 then
-                                if widthPointer = IMAGEWIDTHRATIO then
+                            if IMAGEWIDTHRATIO > 1 then -- Image width greater than the packetsize
+                                if widthPointer = IMAGEWIDTHRATIO then -- First packet in the row
                                     for i in 1 to PACKETSIZE-1 loop
-                                        m_axi_pixels_data(PIXELSIZE*(PACKETSIZE-i)-1 downto PIXELSIZE*(PACKETSIZE-i)-PIXELSIZE) <= std_logic_vector(resize((
-                                            resize(unsigned(buffered(0)(PACKETBITS*widthPointer-PIXELSIZE*(i-1)-1 downto PACKETBITS*widthPointer-PIXELSIZE*(i-1)-PIXELSIZE)), PIXELSIZE*2-1)
-                                          + unsigned(buffered(0)(PACKETBITS*widthPointer-PIXELSIZE*(i)-1 downto PACKETBITS*widthPointer-PIXELSIZE*(i)-PIXELSIZE))
-                                          + unsigned(buffered(0)(PACKETBITS*widthPointer-PIXELSIZE*(i+1)-1 downto PACKETBITS*widthPointer-PIXELSIZE*(i+1)-PIXELSIZE))
-                                          + unsigned(buffered(1)(PACKETBITS*widthPointer-PIXELSIZE*(i-1)-1 downto PACKETBITS*widthPointer-PIXELSIZE*(i-1)-PIXELSIZE))
-                                          + unsigned(buffered(1)(PACKETBITS*widthPointer-PIXELSIZE*(i)-1 downto PACKETBITS*widthPointer-PIXELSIZE*(i)-PIXELSIZE))
-                                          + unsigned(buffered(1)(PACKETBITS*widthPointer-PIXELSIZE*(i+1)-1 downto PACKETBITS*widthPointer-PIXELSIZE*(i+1)-PIXELSIZE))
-                                          + unsigned(buffered(2)(PACKETBITS*widthPointer-PIXELSIZE*(i-1)-1 downto PACKETBITS*widthPointer-PIXELSIZE*(i-1)-PIXELSIZE))
-                                          + unsigned(buffered(2)(PACKETBITS*widthPointer-PIXELSIZE*(i)-1 downto PACKETBITS*widthPointer-PIXELSIZE*(i)-PIXELSIZE))
-                                          + unsigned(buffered(2)(PACKETBITS*widthPointer-PIXELSIZE*(i+1)-1 downto PACKETBITS*widthPointer-PIXELSIZE*(i+1)-PIXELSIZE))) / divisorMiddle, PIXELSIZE));
+                                        middle(m_axi_pixels_data, PIXELSIZE*(PACKETSIZE-i)-1, PIXELSIZE*(PACKETSIZE-i)-PIXELSIZE,
+                                               PACKETBITS*widthPointer-PIXELSIZE*(i-1)-1, PACKETBITS*widthPointer-PIXELSIZE*(i-1)-PIXELSIZE,
+                                               PACKETBITS*widthPointer-PIXELSIZE*(i)-1, PACKETBITS*widthPointer-PIXELSIZE*(i)-PIXELSIZE,
+                                               PACKETBITS*widthPointer-PIXELSIZE*(i+1)-1, PACKETBITS*widthPointer-PIXELSIZE*(i+1)-PIXELSIZE);
                                     end loop;
-                                elsif widthPointer = 1 then
+                                elsif widthPointer = 1 then -- Last packet in the row
                                     for i in 2 to PACKETSIZE loop
-                                        m_axi_pixels_data(PIXELSIZE*i-1 downto PIXELSIZE*i-PIXELSIZE) <= std_logic_vector(resize((
-                                            resize(unsigned(buffered(0)(PIXELSIZE*(i-1)-1 downto PIXELSIZE*(i-1)-PIXELSIZE)), PIXELSIZE*2-1)
-                                          + unsigned(buffered(0)(PIXELSIZE*(i)-1 downto PIXELSIZE*(i)-PIXELSIZE))
-                                          + unsigned(buffered(0)(PIXELSIZE*(i+1)-1 downto PIXELSIZE*(i+1)-PIXELSIZE))
-                                          + unsigned(buffered(1)(PIXELSIZE*(i-1)-1 downto PIXELSIZE*(i-1)-PIXELSIZE))
-                                          + unsigned(buffered(1)(PIXELSIZE*(i)-1 downto PIXELSIZE*(i)-PIXELSIZE))
-                                          + unsigned(buffered(1)(PIXELSIZE*(i+1)-1 downto PIXELSIZE*(i+1)-PIXELSIZE))
-                                          + unsigned(buffered(2)(PIXELSIZE*(i-1)-1 downto PIXELSIZE*(i-1)-PIXELSIZE))
-                                          + unsigned(buffered(2)(PIXELSIZE*(i)-1 downto PIXELSIZE*(i)-PIXELSIZE))
-                                          + unsigned(buffered(2)(PIXELSIZE*(i+1)-1 downto PIXELSIZE*(i+1)-PIXELSIZE))) / divisorMiddle, PIXELSIZE));
+                                        middle(m_axi_pixels_data, PIXELSIZE*i-1, PIXELSIZE*i-PIXELSIZE,
+                                               PIXELSIZE*(i-1)-1, PIXELSIZE*(i-1)-PIXELSIZE,
+                                               PIXELSIZE*(i)-1, PIXELSIZE*(i)-PIXELSIZE,
+                                               PIXELSIZE*(i+1)-1, PIXELSIZE*(i+1)-PIXELSIZE);
                                     end loop;
-                                else
+                                else -- Intermediate packet(s) in the row
                                     for i in 0 to PACKETSIZE-1 loop
-                                        m_axi_pixels_data(PIXELSIZE*(PACKETSIZE-i)-1 downto PIXELSIZE*(PACKETSIZE-i)-PIXELSIZE) <= std_logic_vector(resize((
-                                            resize(unsigned(buffered(0)(PACKETBITS*widthPointer-PIXELSIZE*(i-1)-1 downto PACKETBITS*widthPointer-PIXELSIZE*(i-1)-PIXELSIZE)), PIXELSIZE*2-1)
-                                          + unsigned(buffered(0)(PACKETBITS*widthPointer-PIXELSIZE*(i)-1 downto PACKETBITS*widthPointer-PIXELSIZE*(i)-PIXELSIZE))
-                                          + unsigned(buffered(0)(PACKETBITS*widthPointer-PIXELSIZE*(i+1)-1 downto PACKETBITS*widthPointer-PIXELSIZE*(i+1)-PIXELSIZE))
-                                          + unsigned(buffered(1)(PACKETBITS*widthPointer-PIXELSIZE*(i-1)-1 downto PACKETBITS*widthPointer-PIXELSIZE*(i-1)-PIXELSIZE))
-                                          + unsigned(buffered(1)(PACKETBITS*widthPointer-PIXELSIZE*(i)-1 downto PACKETBITS*widthPointer-PIXELSIZE*(i)-PIXELSIZE))
-                                          + unsigned(buffered(1)(PACKETBITS*widthPointer-PIXELSIZE*(i+1)-1 downto PACKETBITS*widthPointer-PIXELSIZE*(i+1)-PIXELSIZE))
-                                          + unsigned(buffered(2)(PACKETBITS*widthPointer-PIXELSIZE*(i-1)-1 downto PACKETBITS*widthPointer-PIXELSIZE*(i-1)-PIXELSIZE))
-                                          + unsigned(buffered(2)(PACKETBITS*widthPointer-PIXELSIZE*(i)-1 downto PACKETBITS*widthPointer-PIXELSIZE*(i)-PIXELSIZE))
-                                          + unsigned(buffered(2)(PACKETBITS*widthPointer-PIXELSIZE*(i+1)-1 downto PACKETBITS*widthPointer-PIXELSIZE*(i+1)-PIXELSIZE))) / divisorMiddle, PIXELSIZE));
+                                        middle(m_axi_pixels_data, PIXELSIZE*(PACKETSIZE-i)-1, PIXELSIZE*(PACKETSIZE-i)-PIXELSIZE,
+                                               PACKETBITS*widthPointer-PIXELSIZE*(i-1)-1, PACKETBITS*widthPointer-PIXELSIZE*(i-1)-PIXELSIZE,
+                                               PACKETBITS*widthPointer-PIXELSIZE*(i)-1, PACKETBITS*widthPointer-PIXELSIZE*(i)-PIXELSIZE,
+                                               PACKETBITS*widthPointer-PIXELSIZE*(i+1)-1, PACKETBITS*widthPointer-PIXELSIZE*(i+1)-PIXELSIZE);
                                     end loop;
                                 end if;
-                            elsif IMAGEWIDTHRATIO = 1 then
+                            elsif IMAGEWIDTHRATIO = 1 then -- Image width equals the packetsize
                                 for i in 2 to PACKETSIZE-1 loop
-                                    m_axi_pixels_data(PIXELSIZE*i-1 downto PIXELSIZE*i-PIXELSIZE) <= std_logic_vector(resize((
-                                            resize(unsigned(buffered(0)(PIXELSIZE*(i-1)-1 downto PIXELSIZE*(i-1)-PIXELSIZE)), PIXELSIZE*2-1)
-                                          + unsigned(buffered(0)(PIXELSIZE*(i)-1 downto PIXELSIZE*(i)-PIXELSIZE))
-                                          + unsigned(buffered(0)(PIXELSIZE*(i+1)-1 downto PIXELSIZE*(i+1)-PIXELSIZE))
-                                          + unsigned(buffered(1)(PIXELSIZE*(i-1)-1 downto PIXELSIZE*(i-1)-PIXELSIZE))
-                                          + unsigned(buffered(1)(PIXELSIZE*(i)-1 downto PIXELSIZE*(i)-PIXELSIZE))
-                                          + unsigned(buffered(1)(PIXELSIZE*(i+1)-1 downto PIXELSIZE*(i+1)-PIXELSIZE))
-                                          + unsigned(buffered(2)(PIXELSIZE*(i-1)-1 downto PIXELSIZE*(i-1)-PIXELSIZE))
-                                          + unsigned(buffered(2)(PIXELSIZE*(i)-1 downto PIXELSIZE*(i)-PIXELSIZE))
-                                          + unsigned(buffered(2)(PIXELSIZE*(i+1)-1 downto PIXELSIZE*(i+1)-PIXELSIZE))) / divisorMiddle, PIXELSIZE));
+                                    middle(m_axi_pixels_data, PIXELSIZE*i-1, PIXELSIZE*i-PIXELSIZE,
+                                           PIXELSIZE*(i-1)-1, PIXELSIZE*(i-1)-PIXELSIZE,
+                                           PIXELSIZE*(i)-1, PIXELSIZE*(i)-PIXELSIZE,
+                                           PIXELSIZE*(i+1)-1, PIXELSIZE*(i+1)-PIXELSIZE);
                                 end loop;
                             end if;
 

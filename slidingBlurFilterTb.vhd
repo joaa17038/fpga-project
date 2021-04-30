@@ -12,7 +12,7 @@ end entity;
 architecture sim of testbench is
 
     constant PIXELSIZE : integer := 8;
-    constant PACKETSIZE : integer := 64;
+    constant PACKETSIZE : integer := 64; -- max is 64
     constant MAXIMAGEWIDTH : integer := 3840; -- supports 64, 128, 192, 256, 320, 3840
     constant MAXIMAGEHEIGHT : integer := 2160;
 
@@ -75,12 +75,13 @@ begin
         if rst = '1' then
             sim_pixels_data <= (others => '0');
             sim_dimensions_data <= (others => '0');
+            
             filterTruth1 <= (others => '0');
             filterTruth2 <= (others => '0');
+            
             sim_pixels_valid <= '0';
             sim_dimensions_valid <= '0';
             two_pixels_ready <= '0';
-            --one_pixels_ready <= '0'; -- changed by module instance 2
             one_dimensions_ready <= '1';
             sim_pixels_last <= '0';
 
@@ -90,15 +91,13 @@ begin
             sim_dimensions_valid <= '0';
             one_dimensions_ready <= '0';
             if (sim_dimensions_ready_one = '1' and one_dimensions_ready = '1' and sim_dimensions_ready_two = '1') then
-                sim_dimensions_data <= X"080080"; -- HEIGHT:WIDTH, 040040, 080080, 0C00C0, 100100, 140140, F00F00
+                sim_dimensions_data <= X"140140"; -- HEIGHT:WIDTH
                 sim_dimensions_valid <= '1';
                 one_dimensions_ready <= '1';
                 two_pixels_ready <= '1';
-                --one_pixels_ready <= '1'; -- changed by module instance 2
             end if;
 
             -- First Stream
-            --one_ready <= not one_ready; -- changed by module instance 2
             --two_pixels_ready <= not two_pixels_ready;
             if not endfile(simulationFile) and one_pixels_ready = '1' and sim_pixels_ready = '1' then
                 readline(simulationFile, line_v);
@@ -114,21 +113,21 @@ begin
                 sim_pixels_last <= '0';
             end if;
 
-            if not endfile(assertionFileOne) and one_pixels_ready = '1' and sim_pixels_ready = '0' then
+            -- Truth Values
+            if not endfile(assertionFileOne) and one_pixels_valid = '1' then
                 readline(assertionFileOne, line_v2);
                 hread(line_v2, assertionOne);
                 filterTruth1 <= assertionOne;
-                assert one_pixels_data = filterTruth1 report "Incorrect " & integer'image(to_integer(unsigned(one_pixels_data))) & " /= " & integer'image(to_integer(unsigned(filterTruth1)));
-            elsif endfile(assertionFileOne) and one_pixels_ready = '1' and sim_pixels_ready = '1' then
+                assert one_pixels_data = assertionOne report "Incorrect " & integer'image(to_integer(unsigned(one_pixels_data))) & " /= " & integer'image(to_integer(unsigned(assertionOne)));
+            elsif endfile(assertionFileOne) then
                 filterTruth1 <= (others => '0');
             end if;
-            
-            if not endfile(assertionFileTwo) and two_pixels_ready = '1' and one_pixels_ready = '0' and sim_pixels_ready = '1' then
+            if not endfile(assertionFileTwo) and two_pixels_valid = '1' then
                 readline(assertionFileTwo, line_v3);
                 hread(line_v3, assertionTwo);
                 filterTruth2 <= assertionTwo;
-                assert two_pixels_data = filterTruth2 report "Incorrect " & integer'image(to_integer(unsigned(two_pixels_data))) & " /= " & integer'image(to_integer(unsigned(filterTruth2)));
-            elsif endfile(assertionFileTwo) and two_pixels_ready = '1' and one_pixels_ready = '1' then
+                assert two_pixels_data = assertionTwo report "Incorrect " & integer'image(to_integer(unsigned(two_pixels_data))) & " /= " & integer'image(to_integer(unsigned(assertionTwo)));
+            elsif endfile(assertionFileTwo) then
                 filterTruth2 <= (others => '0');
             end if;
 
