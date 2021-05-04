@@ -63,7 +63,7 @@ begin
         file assertionFileOne : text is in "./assertionOne.in";
         variable line_v2 : line;
         variable assertionOne : std_logic_vector(PACKETSIZE*PIXELSIZE-1 downto 0);
-        
+
         file assertionFileTwo : text is in "./assertionTwo.in";
         variable line_v3 : line;
         variable assertionTwo : std_logic_vector(PACKETSIZE*PIXELSIZE-1 downto 0);
@@ -75,10 +75,10 @@ begin
         if rst = '1' then
             sim_pixels_data <= (others => '0');
             sim_dimensions_data <= (others => '0');
-            
+
             filterTruth1 <= (others => '0');
             filterTruth2 <= (others => '0');
-            
+
             sim_pixels_valid <= '0';
             sim_dimensions_valid <= '0';
             two_pixels_ready <= '0';
@@ -91,7 +91,7 @@ begin
             sim_dimensions_valid <= '0';
             one_dimensions_ready <= '0';
             if (sim_dimensions_ready_one = '1' and one_dimensions_ready = '1' and sim_dimensions_ready_two = '1') then
-                sim_dimensions_data <= X"140140"; -- HEIGHT:WIDTH
+                sim_dimensions_data <= X"280280"; -- HEIGHT:WIDTH
                 sim_dimensions_valid <= '1';
                 one_dimensions_ready <= '1';
                 two_pixels_ready <= '1';
@@ -135,7 +135,7 @@ begin
 
     end process;
 
-    i_SlidingBlurFilter1 : entity work.slidingBlurFilterV1(rtl)
+    i_SlidingBlurFilter1 : entity work.slidingBlurFilter(rtl)
     generic map (
         PIXELSIZE => PIXELSIZE,
         PACKETSIZE => PACKETSIZE,
@@ -159,7 +159,7 @@ begin
         s_axi_dimensions_data => sim_dimensions_data,
         m_axi_dimensions_ready => one_dimensions_ready);
 
-    i_SlidingBlurFilter2 : entity work.slidingBlurFilterV1(rtl)
+    i_SlidingBlurFilter2 : entity work.slidingBlurFilter(rtl)
     generic map (
         PIXELSIZE => PIXELSIZE,
         PACKETSIZE => PACKETSIZE,

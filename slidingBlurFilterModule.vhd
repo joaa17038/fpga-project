@@ -4,7 +4,7 @@ use ieee.std_logic_unsigned.all;
 use ieee.numeric_std.all;
 
 
-entity slidingBlurFilterV1 is
+entity slidingBlurFilter is
 generic (PIXELSIZE, PACKETSIZE, MAXIMAGEWIDTH, MAXIMAGEHEIGHT: integer);
 port (
     clk : in std_logic; -- Clock
@@ -27,7 +27,7 @@ port (
 end entity;
 
 
-architecture rtl of slidingBlurFilterV1 is
+architecture rtl of slidingBlurFilter is
 
     type threeRows is array(0 to 2) of std_logic_vector(PIXELSIZE*PACKETSIZE*(MAXIMAGEWIDTH/PACKETSIZE)-1 downto 0); -- Buffered rows
     type typeState is (DIM, RECEIVE, FILTER); -- Finite State Machine for dimensions, pixels, and filter
