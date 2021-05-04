@@ -2,6 +2,7 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.std_logic_unsigned.all;
 use ieee.numeric_std.all;
+use IEEE.math_real.all;
 
 
 entity slidingBlurFilter is
@@ -20,7 +21,7 @@ port (
     m_axi_pixels_last : out std_logic; -- Output last
     m_axi_pixels_ready : in std_logic; -- Input ready
 
-    s_axi_dimensions_data : in std_logic_vector(23 downto 0); -- Input data
+    s_axi_dimensions_data : in std_logic_vector(integer(ceil(log2(real(MAXIMAGEWIDTH))))*2-1 downto 0); -- Input data
     s_axi_dimensions_valid : in std_logic; -- Input valid
     s_axi_dimensions_ready : out std_logic; -- Output ready
     m_axi_dimensions_ready : in std_logic); -- Input ready
