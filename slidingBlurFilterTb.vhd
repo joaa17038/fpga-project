@@ -83,26 +83,21 @@ begin
 --            filterTruth2 <= (others => '0');
 
             sim_pixels_valid <= '0';
-            sim_dimensions_valid <= '0';
+            sim_dimensions_valid <= '1';
 --            two_pixels_ready <= '0';
             one_pixels_ready <= '0'; -- single module
             one_dimensions_ready <= '1';
             sim_pixels_last <= '0';
+            
+            sim_dimensions_valid <= '1';
+            sim_dimensions_data <= IMAGEDIMS;
 
         else
             -- Second Stream
             sim_dimensions_data <= X"000000";
             sim_dimensions_valid <= '0';
             one_dimensions_ready <= '0';
-            
---            if sim_dimensions_ready_one = '1' and one_dimensions_ready = '1' and sim_dimensions_ready_two = '1' then
-            if sim_dimensions_ready_one = '1' and one_dimensions_ready = '1' then -- single module
-                sim_dimensions_data <= IMAGEDIMS;
-                sim_dimensions_valid <= '1';
-                one_dimensions_ready <= '1';
---                two_pixels_ready <= '1';
-                one_pixels_ready <= '1'; -- single module
-            end if;
+            one_pixels_ready <= not one_pixels_ready;
 
             -- First Stream
             if not endfile(simulationFile) and one_pixels_ready = '1' and sim_pixels_ready = '1' then
@@ -120,7 +115,7 @@ begin
             end if;
 
             -- Truth Values
-            if not endfile(assertionFileOne) and one_pixels_valid = '1' then
+            if not endfile(assertionFileOne) and one_pixels_valid = '1' and one_pixels_ready = '1' then
                 readline(assertionFileOne, line_v2);
                 hread(line_v2, assertionOne);
 --                filterTruth1 <= assertionOne; -- diagnostics
@@ -142,11 +137,6 @@ begin
 --                totalCycles := totalCycles + 1;
 --                report "Total Cycles: " & integer'image(totalCycles);
 --            end if;
-            
-            if one_pixels_last = '1' then
-                one_pixels_ready <= '0';
-            end if;
-
         end if;
 
     end process;
