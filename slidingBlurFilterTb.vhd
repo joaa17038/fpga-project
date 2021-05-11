@@ -15,6 +15,7 @@ architecture sim of testbench is
     constant PACKETSIZE : integer := 64; -- max is 64
     constant MAXIMAGEWIDTH : integer := 3840; -- supports 64, 128, 192, 256, 320, 3840
     constant MAXIMAGEHEIGHT : integer := 2160;
+    constant IMAGEDIMS : std_logic_vector(23 downto 0) := X"100100"; -- WIDTH:HEIGHT
 
     signal clk : std_logic := '1';
     signal rst : std_logic := '1';
@@ -25,20 +26,20 @@ architecture sim of testbench is
     signal sim_pixels_last : std_logic;
 
     signal one_pixels_data : std_logic_vector(PACKETSIZE*PIXELSIZE-1 downto 0);
-    signal filterTruth1 : std_logic_vector(PACKETSIZE*PIXELSIZE-1 downto 0);
+--    signal filterTruth1 : std_logic_vector(PACKETSIZE*PIXELSIZE-1 downto 0); -- diagnostics
     signal one_pixels_valid : std_logic;
     signal one_pixels_ready : std_logic;
     signal one_pixels_last : std_logic;
 
-    signal two_pixels_data : std_logic_vector(PACKETSIZE*PIXELSIZE-1 downto 0);
-    signal filterTruth2 : std_logic_vector(PACKETSIZE*PIXELSIZE-1 downto 0);
-    signal two_pixels_valid: std_logic;
-    signal two_pixels_last : std_logic;
-    signal two_pixels_ready : std_logic;
+--    signal two_pixels_data : std_logic_vector(PACKETSIZE*PIXELSIZE-1 downto 0);
+--    signal filterTruth2 : std_logic_vector(PACKETSIZE*PIXELSIZE-1 downto 0);
+--    signal two_pixels_valid: std_logic;
+--    signal two_pixels_last : std_logic;
+--    signal two_pixels_ready : std_logic;
 
     signal sim_dimensions_data : std_logic_vector(23 downto 0);
     signal sim_dimensions_ready_one : std_logic;
-    signal sim_dimensions_ready_two : std_logic;
+--    signal sim_dimensions_ready_two : std_logic;
     signal one_dimensions_ready : std_logic;
     signal sim_dimensions_valid : std_logic;
 
@@ -64,9 +65,11 @@ begin
         variable line_v2 : line;
         variable assertionOne : std_logic_vector(PACKETSIZE*PIXELSIZE-1 downto 0);
 
-        file assertionFileTwo : text is in "./assertionTwo.in";
-        variable line_v3 : line;
-        variable assertionTwo : std_logic_vector(PACKETSIZE*PIXELSIZE-1 downto 0);
+--        file assertionFileTwo : text is in "./assertionTwo.in";
+--        variable line_v3 : line;
+--        variable assertionTwo : std_logic_vector(PACKETSIZE*PIXELSIZE-1 downto 0);
+
+        variable totalCycles : integer := 0;
 
     begin
 
@@ -76,12 +79,13 @@ begin
             sim_pixels_data <= (others => '0');
             sim_dimensions_data <= (others => '0');
 
-            filterTruth1 <= (others => '0');
-            filterTruth2 <= (others => '0');
+--            filterTruth1 <= (others => '0'); -- diagnostics
+--            filterTruth2 <= (others => '0');
 
             sim_pixels_valid <= '0';
             sim_dimensions_valid <= '0';
-            two_pixels_ready <= '0';
+--            two_pixels_ready <= '0';
+            one_pixels_ready <= '0'; -- single module
             one_dimensions_ready <= '1';
             sim_pixels_last <= '0';
 
@@ -90,15 +94,17 @@ begin
             sim_dimensions_data <= X"000000";
             sim_dimensions_valid <= '0';
             one_dimensions_ready <= '0';
-            if (sim_dimensions_ready_one = '1' and one_dimensions_ready = '1' and sim_dimensions_ready_two = '1') then
-                sim_dimensions_data <= X"280280"; -- HEIGHT:WIDTH
+            
+--            if sim_dimensions_ready_one = '1' and one_dimensions_ready = '1' and sim_dimensions_ready_two = '1' then
+            if sim_dimensions_ready_one = '1' and one_dimensions_ready = '1' then -- single module
+                sim_dimensions_data <= IMAGEDIMS;
                 sim_dimensions_valid <= '1';
                 one_dimensions_ready <= '1';
-                two_pixels_ready <= '1';
+--                two_pixels_ready <= '1';
+                one_pixels_ready <= '1'; -- single module
             end if;
 
             -- First Stream
-            --two_pixels_ready <= not two_pixels_ready;
             if not endfile(simulationFile) and one_pixels_ready = '1' and sim_pixels_ready = '1' then
                 readline(simulationFile, line_v);
                 hread(line_v, simulation);
@@ -117,18 +123,28 @@ begin
             if not endfile(assertionFileOne) and one_pixels_valid = '1' then
                 readline(assertionFileOne, line_v2);
                 hread(line_v2, assertionOne);
-                filterTruth1 <= assertionOne;
-                assert one_pixels_data = assertionOne report "Incorrect " & integer'image(to_integer(unsigned(one_pixels_data))) & " /= " & integer'image(to_integer(unsigned(assertionOne)));
-            elsif endfile(assertionFileOne) then
-                filterTruth1 <= (others => '0');
+--                filterTruth1 <= assertionOne; -- diagnostics
+                assert one_pixels_data = assertionOne report "Incorrect " & integer'image(to_integer(unsigned(one_pixels_data))) & " /= " & integer'image(to_integer(unsigned(assertionOne))) severity error;
+--            elsif endfile(assertionFileOne) then -- diagnostics
+--                filterTruth1 <= (others => '0'); -- diagnostics
             end if;
-            if not endfile(assertionFileTwo) and two_pixels_valid = '1' then
-                readline(assertionFileTwo, line_v3);
-                hread(line_v3, assertionTwo);
-                filterTruth2 <= assertionTwo;
-                assert two_pixels_data = assertionTwo report "Incorrect " & integer'image(to_integer(unsigned(two_pixels_data))) & " /= " & integer'image(to_integer(unsigned(assertionTwo)));
-            elsif endfile(assertionFileTwo) then
-                filterTruth2 <= (others => '0');
+            
+--            if not endfile(assertionFileTwo) and two_pixels_valid = '1' then
+--                readline(assertionFileTwo, line_v3);
+--                hread(line_v3, assertionTwo);
+--                filterTruth2 <= assertionTwo;
+--                assert two_pixels_data = assertionTwo report "Incorrect " & integer'image(to_integer(unsigned(two_pixels_data))) & " /= " & integer'image(to_integer(unsigned(assertionTwo)));
+--            elsif endfile(assertionFileTwo) then
+--                filterTruth2 <= (others => '0');
+--            end if;
+
+--            if one_pixels_ready = '1' then
+--                totalCycles := totalCycles + 1;
+--                report "Total Cycles: " & integer'image(totalCycles);
+--            end if;
+            
+            if one_pixels_last = '1' then
+                one_pixels_ready <= '0';
             end if;
 
         end if;
@@ -159,28 +175,28 @@ begin
         s_axi_dimensions_data => sim_dimensions_data,
         m_axi_dimensions_ready => one_dimensions_ready);
 
-    i_SlidingBlurFilter2 : entity work.slidingBlurFilter(rtl)
-    generic map (
-        PIXELSIZE => PIXELSIZE,
-        PACKETSIZE => PACKETSIZE,
-        MAXIMAGEWIDTH => MAXIMAGEWIDTH,
-        MAXIMAGEHEIGHT => MAXIMAGEHEIGHT)
-    port map (
-        clk => clk,
-        rst => rst,
-        s_axi_pixels_valid => one_pixels_valid,
-        s_axi_pixels_ready => one_pixels_ready,
-        s_axi_pixels_data => one_pixels_data,
-        s_axi_pixels_last => one_pixels_last,
+--    i_SlidingBlurFilter2 : entity work.slidingBlurFilter(rtl)
+--    generic map (
+--        PIXELSIZE => PIXELSIZE,
+--        PACKETSIZE => PACKETSIZE,
+--        MAXIMAGEWIDTH => MAXIMAGEWIDTH,
+--        MAXIMAGEHEIGHT => MAXIMAGEHEIGHT)
+--    port map (
+--        clk => clk,
+--        rst => rst,
+--        s_axi_pixels_valid => one_pixels_valid,
+--        s_axi_pixels_ready => one_pixels_ready,
+--        s_axi_pixels_data => one_pixels_data,
+--        s_axi_pixels_last => one_pixels_last,
 
-        m_axi_pixels_valid => two_pixels_valid,
-        m_axi_pixels_ready => two_pixels_ready,
-        m_axi_pixels_last => two_pixels_last,
-        m_axi_pixels_data => two_pixels_data,
+--        m_axi_pixels_valid => two_pixels_valid,
+--        m_axi_pixels_ready => two_pixels_ready,
+--        m_axi_pixels_last => two_pixels_last,
+--        m_axi_pixels_data => two_pixels_data,
 
-        s_axi_dimensions_valid => sim_dimensions_valid,
-        s_axi_dimensions_ready => sim_dimensions_ready_two,
-        s_axi_dimensions_data => sim_dimensions_data,
-        m_axi_dimensions_ready => one_dimensions_ready);
+--        s_axi_dimensions_valid => sim_dimensions_valid,
+--        s_axi_dimensions_ready => sim_dimensions_ready_two,
+--        s_axi_dimensions_data => sim_dimensions_data,
+--        m_axi_dimensions_ready => one_dimensions_ready);
 
 end architecture;
