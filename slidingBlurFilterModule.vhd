@@ -2,6 +2,7 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.std_logic_unsigned.all;
 use ieee.numeric_std.all;
+use ieee.math_real.all;
 
 
 entity slidingBlurFilter is
@@ -34,21 +35,18 @@ architecture rtl of slidingBlurFilter is
     constant PACKETBITS : integer := PIXELSIZE*PACKETSIZE; -- Total number of bits in each packet
     constant ZERO : std_logic_vector(PACKETBITS-1 downto 0) := (others => '0'); -- Zero padding for the image
 
-    type threeRows is array(0 to 2) of std_logic_vector(PACKETBITS*(MAXIMAGEWIDTH/PACKETSIZE)-1 downto 0); -- rows rows
+    type threeRows is array(0 to 2) of std_logic_vector(PACKETBITS*(MAXIMAGEWIDTH/PACKETSIZE)-1 downto 0); -- buffered rows
     type typeState is (DIM, RECEIVE, FILTER); -- Finite State Machine for dimensions, pixels, and filter
 
     signal state : typeState := DIM; -- Initial state for receiving image dimensions
     signal rows : threeRows := (others => (others => '0'));
     signal restart : std_logic := '0'; -- Reset the signals for the next image
 
-    signal heightPointer : integer range 0 to MAXIMAGEHEIGHT; -- Height pointer for the image
-    signal widthPointer : integer range 1 to MAXIMAGEWIDTH/PACKETSIZE; -- Width pointer for the image
+    signal heightPointer, IMAGEHEIGHT : integer range 0 to MAXIMAGEHEIGHT; -- Height pointer for the image, The height of the image
+    signal widthPointer : integer range 1 to MAXIMAGEWIDTH/PACKETSIZE; -- Width pointer for the image,
 
-    signal bWidthPointer : integer range 0 to MAXIMAGEWIDTH/PACKETSIZE; -- Width pointer for the rows packets
-    signal bHeightPointer : integer range 0 to 2; -- Height pointer for the rows rows
-
-    signal IMAGEHEIGHT : integer range 0 to MAXIMAGEHEIGHT; -- The height of the image
-    signal IMAGEWIDTHRATIO : integer range 0 to MAXIMAGEWIDTH/PACKETSIZE; -- The packet width of the image
+    signal bWidthPointer, IMAGEWIDTHRATIO : integer range 0 to MAXIMAGEWIDTH/PACKETSIZE; -- Width pointer for the rows packets, The packet width of the image
+    signal bHeightPointer : integer range 0 to 2; -- Height pointer for the buffered rows
 
     signal divisorSide : unsigned(3 downto 0); -- Side divisor for the filter
     signal divisorMiddle : unsigned(3 downto 0); -- Middle divisor for the filter
@@ -128,7 +126,7 @@ begin
                                         s_axi_pixels_ready <= '0'; -- Not ready
                                     end if;
                                     bWidthPointer <= IMAGEWIDTHRATIO; -- Reset bWidthPointer
-                                else
+                                elsif bWidthPointer > 1 then
                                     bWidthPointer <= bWidthPointer - 1; -- Decrement bWidthPointer
                                 end if;
                             end if;
@@ -136,8 +134,8 @@ begin
                         when FILTER => -- Filter pixel packets
                             m_axi_pixels_valid <= '1'; -- Valid output
                             widthPointer <= widthPointer - 1; -- Decrement widthPointer
-                            
-                            for i in 0 to PACKETSIZE-2 loop -- First/Intermediate/Last packet(s) in the row
+
+                            for i in 1 to PACKETSIZE-2 loop -- First/Intermediate/Last packet(s) in the row
                                 middle(m_axi_pixels_data, PIXELSIZE*(PACKETSIZE-i)-1, PIXELSIZE*(PACKETSIZE-i)-PIXELSIZE,
                                        PACKETBITS*widthPointer-PIXELSIZE*(i-1)-1, PACKETBITS*widthPointer-PIXELSIZE*(i-1)-PIXELSIZE,
                                        PACKETBITS*widthPointer-PIXELSIZE*(i)-1, PACKETBITS*widthPointer-PIXELSIZE*(i)-PIXELSIZE,
@@ -148,7 +146,13 @@ begin
                                 side(m_axi_pixels_data, PACKETBITS-1, PACKETBITS-PIXELSIZE,
                                      PACKETBITS*widthPointer-1, PACKETBITS*widthPointer-PIXELSIZE,
                                      PACKETBITS*widthPointer-PIXELSIZE-1, PACKETBITS*widthPointer-PIXELSIZE*2);
+                            else
+                                middle(m_axi_pixels_data, PIXELSIZE*(PACKETSIZE-0)-1, PIXELSIZE*(PACKETSIZE-0)-PIXELSIZE,
+                                       PACKETBITS*widthPointer-PIXELSIZE*(0-1)-1, PACKETBITS*widthPointer-PIXELSIZE*(0-1)-PIXELSIZE,
+                                       PACKETBITS*widthPointer-PIXELSIZE*(0)-1, PACKETBITS*widthPointer-PIXELSIZE*(0)-PIXELSIZE,
+                                       PACKETBITS*widthPointer-PIXELSIZE*(0+1)-1, PACKETBITS*widthPointer-PIXELSIZE*(0+1)-PIXELSIZE);
                             end if;
+
                             if widthPointer = 1 then -- Last pixel in the row
                                 side(m_axi_pixels_data, PIXELSIZE-1, 0,
                                      PIXELSIZE-1, 0,
@@ -169,7 +173,6 @@ begin
                                     m_axi_pixels_last <= '1';
                                     restart <= '1';
                                 end if;
-
                             else -- Crossover intermediate pixel
                                 middle(m_axi_pixels_data, PIXELSIZE*(PACKETSIZE-(PACKETSIZE-1))-1, PIXELSIZE*(PACKETSIZE-(PACKETSIZE-1))-PIXELSIZE,
                                        PACKETBITS*widthPointer-PIXELSIZE*(PACKETSIZE-2)-1, PACKETBITS*widthPointer-PIXELSIZE*(PACKETSIZE-2)-PIXELSIZE,
