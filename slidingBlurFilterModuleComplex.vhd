@@ -6,7 +6,7 @@ use ieee.numeric_std.all;
 
 entity slidingBlurFilter is
 generic (PIXELSIZE: integer := 8;
-         WORDSIZE: integer := 16;
+         WORDSIZE: integer := 8;
          MAXIMAGEWIDTH: integer := 16;
          MAXIMAGEHEIGHT: integer := 16);
 port (
