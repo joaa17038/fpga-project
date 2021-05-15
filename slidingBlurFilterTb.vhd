@@ -13,9 +13,9 @@ architecture sim of testbench is
 
     constant PIXELSIZE : integer := 8;
     constant PACKETSIZE : integer := 64; -- max is 64
-    constant MAXIMAGEWIDTH : integer := 3840; -- supports 64, 128, 192, 256, 320, 3840
-    constant MAXIMAGEHEIGHT : integer := 2160;
-    constant IMAGEDIMS : std_logic_vector(23 downto 0) := X"100100"; -- WIDTH:HEIGHT
+    constant MAXIMAGEWIDTH : integer := 1024; -- supports 64, 128, 192, 256, 320, 3840
+    constant MAXIMAGEHEIGHT : integer := 1024;
+    constant IMAGEDIMS : std_logic_vector(23 downto 0) := X"008008"; -- WIDTH:HEIGHT
 
     signal clk : std_logic := '1';
     signal rst : std_logic := '1';
@@ -88,7 +88,7 @@ begin
             one_pixels_ready <= '0'; -- single module
             one_dimensions_ready <= '1';
             sim_pixels_last <= '0';
-            
+
             sim_dimensions_valid <= '1';
             sim_dimensions_data <= IMAGEDIMS;
 
@@ -123,7 +123,7 @@ begin
 --            elsif endfile(assertionFileOne) then -- diagnostics
 --                filterTruth1 <= (others => '0'); -- diagnostics
             end if;
-            
+
 --            if not endfile(assertionFileTwo) and two_pixels_valid = '1' then
 --                readline(assertionFileTwo, line_v3);
 --                hread(line_v3, assertionTwo);
