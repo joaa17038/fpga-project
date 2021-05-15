@@ -2,23 +2,22 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.std_logic_unsigned.all;
 use ieee.numeric_std.all;
-use ieee.math_real.all;
 
 
 entity slidingBlurFilter is
 generic (PIXELSIZE: integer := 8;
-         PACKETSIZE: integer := 64;
-         MAXIMAGEWIDTH: integer := 1024;
-         MAXIMAGEHEIGHT: integer := 1024);
+         WORDSIZE: integer := 8;
+         MAXIMAGEWIDTH: integer := 16;
+         MAXIMAGEHEIGHT: integer := 16);
 port (
     clk : in std_logic; -- Clock
     rst : in std_logic; -- Reset
 
-    s_axi_pixels_data : in std_logic_vector(PIXELSIZE*PACKETSIZE-1 downto 0); -- Input data
+    s_axi_pixels_data : in std_logic_vector(PIXELSIZE*WORDSIZE-1 downto 0); -- Input data
     s_axi_pixels_valid : in std_logic; -- Input valid
     s_axi_pixels_last : in std_logic; -- Input last
     s_axi_pixels_ready : out std_logic; -- Output ready
-    m_axi_pixels_data : out std_logic_vector(PIXELSIZE*PACKETSIZE-1 downto 0); -- Output data
+    m_axi_pixels_data : out std_logic_vector(PIXELSIZE*WORDSIZE-1 downto 0); -- Output data
     m_axi_pixels_valid : out std_logic; -- Output valid
     m_axi_pixels_last : out std_logic; -- Output last
     m_axi_pixels_ready : in std_logic; -- Input ready
@@ -32,10 +31,10 @@ end entity;
 
 architecture rtl of slidingBlurFilter is
 
-    constant PACKETBITS : integer := PIXELSIZE*PACKETSIZE; -- Total number of bits in each packet
-    constant ZERO : std_logic_vector(PACKETBITS-1 downto 0) := (others => '0'); -- Zero padding for the image
+    constant WORDBITS : integer := PIXELSIZE*WORDSIZE; -- Total number of bits in each word
+    constant ZERO : std_logic_vector(WORDBITS-1 downto 0) := (others => '0'); -- Zero padding for the image
 
-    type threeRows is array(0 to 2) of std_logic_vector(PACKETBITS*(MAXIMAGEWIDTH/PACKETSIZE)-1 downto 0); -- buffered rows
+    type threeRows is array(0 to 2) of std_logic_vector(WORDBITS*(MAXIMAGEWIDTH/WORDSIZE)-1 downto 0); -- buffered rows
     type typeState is (DIM, RECEIVE, FILTER); -- Finite State Machine for dimensions, pixels, and filter
 
     signal state : typeState := DIM; -- Initial state for receiving image dimensions
@@ -43,28 +42,28 @@ architecture rtl of slidingBlurFilter is
     signal restart : std_logic := '0'; -- Reset the signals for the next image
 
     signal heightPointer, IMAGEHEIGHT : integer range 0 to MAXIMAGEHEIGHT; -- Height pointer for the image, The height of the image
-    signal widthPointer : integer range 1 to MAXIMAGEWIDTH/PACKETSIZE; -- Width pointer for the image,
+    signal widthPointer : integer range 1 to MAXIMAGEWIDTH/WORDSIZE; -- Width pointer for the image,
 
-    signal bWidthPointer, IMAGEWIDTHRATIO : integer range 0 to MAXIMAGEWIDTH/PACKETSIZE; -- Width pointer for the rows packets, The packet width of the image
+    signal bWidthPointer, IMAGEWIDTHRATIO : integer range 0 to MAXIMAGEWIDTH/WORDSIZE; -- Width pointer for the rows words, The word width of the image
     signal bHeightPointer : integer range 0 to 2; -- Height pointer for the buffered rows
 
     signal divisorSide : unsigned(3 downto 0); -- Side divisor for the filter
     signal divisorMiddle : unsigned(3 downto 0); -- Middle divisor for the filter
 
-    procedure middle(signal packet : out std_logic_vector(PACKETBITS-1 downto 0);
+    procedure middle(signal word : out std_logic_vector(WORDBITS-1 downto 0);
                      constant startPos, endPos, startA, endA, startB, endB, startC, endC : in integer) is
     begin
-        packet(startPos downto endPos) <= std_logic_vector(resize((
+        word(startPos downto endPos) <= std_logic_vector(resize((
             resize(unsigned(rows(0)(startA downto endA)), PIXELSIZE*2-1) + unsigned(rows(0)(startB downto endB)) + unsigned(rows(0)(startC downto endC))
             + unsigned(rows(1)(startA downto endA)) + unsigned(rows(1)(startB downto endB)) + unsigned(rows(1)(startC downto endC))
             + unsigned(rows(2)(startA downto endA)) + unsigned(rows(2)(startB downto endB)) + unsigned(rows(2)(startC downto endC))
             ) / divisorMiddle, PIXELSIZE));
     end procedure;
 
-    procedure side(signal packet : out std_logic_vector(PACKETBITS-1 downto 0);
+    procedure side(signal word : out std_logic_vector(WORDBITS-1 downto 0);
                    constant startPos, endPos, startA, endA,  startB, endB : in integer) is
     begin
-        packet(startPos downto endPos) <= std_logic_vector(resize((
+        word(startPos downto endPos) <= std_logic_vector(resize((
             resize(unsigned(rows(0)(startA downto endA)), PIXELSIZE*2-1) + unsigned(rows(0)(startB downto endB))
             + unsigned(rows(1)(startA downto endA)) + unsigned(rows(1)(startB downto endB))
             + unsigned(rows(2)(startA downto endA)) + unsigned(rows(2)(startB downto endB))
@@ -102,18 +101,18 @@ begin
                     case state is
                         when DIM => -- Receive image dimensions
                             IMAGEHEIGHT <= to_integer(unsigned(s_axi_dimensions_data(11 downto 0)));
-                            IMAGEWIDTHRATIO <= to_integer(unsigned(s_axi_dimensions_data(23 downto 12)))/PACKETSIZE;
-                            bWidthPointer <= to_integer(unsigned(s_axi_dimensions_data(23 downto 12)))/PACKETSIZE;
-                            widthPointer <= to_integer(unsigned(s_axi_dimensions_data(23 downto 12)))/PACKETSIZE;
+                            IMAGEWIDTHRATIO <= to_integer(unsigned(s_axi_dimensions_data(23 downto 12)))/WORDSIZE;
+                            bWidthPointer <= to_integer(unsigned(s_axi_dimensions_data(23 downto 12)))/WORDSIZE;
+                            widthPointer <= to_integer(unsigned(s_axi_dimensions_data(23 downto 12)))/WORDSIZE;
                             s_axi_pixels_ready <= '1';
                             state <= RECEIVE;
 
-                        when RECEIVE => -- Receive pixel packets
+                        when RECEIVE => -- Receive pixel words
                             if s_axi_pixels_valid = '1' or heightPointer > IMAGEHEIGHT-2 then
                                 if s_axi_pixels_valid = '1' then
-                                    rows(bHeightPointer)(PACKETBITS*bWidthPointer-1 downto PACKETBITS*(bWidthPointer-1)) <= s_axi_pixels_data;
+                                    rows(bHeightPointer)(WORDBITS*bWidthPointer-1 downto WORDBITS*(bWidthPointer-1)) <= s_axi_pixels_data;
                                 else
-                                    rows(bHeightPointer)(PACKETBITS*bWidthPointer-1 downto PACKETBITS*(bWidthPointer-1)) <= ZERO;
+                                    rows(bHeightPointer)(WORDBITS*bWidthPointer-1 downto WORDBITS*(bWidthPointer-1)) <= ZERO;
                                 end if;
 
                                 if bWidthPointer = 1 then
@@ -131,26 +130,26 @@ begin
                                 end if;
                             end if;
 
-                        when FILTER => -- Filter pixel packets
+                        when FILTER => -- Filter pixel words
                             m_axi_pixels_valid <= '1'; -- Valid output
                             widthPointer <= widthPointer - 1; -- Decrement widthPointer
 
-                            for i in 1 to PACKETSIZE-2 loop -- First/Intermediate/Last packet(s) in the row
-                                middle(m_axi_pixels_data, PIXELSIZE*(PACKETSIZE-i)-1, PIXELSIZE*(PACKETSIZE-i)-PIXELSIZE,
-                                       PACKETBITS*widthPointer-PIXELSIZE*(i-1)-1, PACKETBITS*widthPointer-PIXELSIZE*(i-1)-PIXELSIZE,
-                                       PACKETBITS*widthPointer-PIXELSIZE*(i)-1, PACKETBITS*widthPointer-PIXELSIZE*(i)-PIXELSIZE,
-                                       PACKETBITS*widthPointer-PIXELSIZE*(i+1)-1, PACKETBITS*widthPointer-PIXELSIZE*(i+1)-PIXELSIZE);
+                            for i in 1 to WORDSIZE-2 loop -- First/Intermediate/Last word(s) in the row
+                                middle(m_axi_pixels_data, PIXELSIZE*(WORDSIZE-i)-1, PIXELSIZE*(WORDSIZE-i)-PIXELSIZE,
+                                       WORDBITS*widthPointer-PIXELSIZE*(i-1)-1, WORDBITS*widthPointer-PIXELSIZE*(i-1)-PIXELSIZE,
+                                       WORDBITS*widthPointer-PIXELSIZE*(i)-1, WORDBITS*widthPointer-PIXELSIZE*(i)-PIXELSIZE,
+                                       WORDBITS*widthPointer-PIXELSIZE*(i+1)-1, WORDBITS*widthPointer-PIXELSIZE*(i+1)-PIXELSIZE);
                             end loop;
 
                             if widthPointer = IMAGEWIDTHRATIO then -- First pixel in the row
-                                side(m_axi_pixels_data, PACKETBITS-1, PACKETBITS-PIXELSIZE,
-                                     PACKETBITS*widthPointer-1, PACKETBITS*widthPointer-PIXELSIZE,
-                                     PACKETBITS*widthPointer-PIXELSIZE-1, PACKETBITS*widthPointer-PIXELSIZE*2);
+                                side(m_axi_pixels_data, WORDBITS-1, WORDBITS-PIXELSIZE,
+                                     WORDBITS*widthPointer-1, WORDBITS*widthPointer-PIXELSIZE,
+                                     WORDBITS*widthPointer-PIXELSIZE-1, WORDBITS*widthPointer-PIXELSIZE*2);
                             else
-                                middle(m_axi_pixels_data, PIXELSIZE*(PACKETSIZE-0)-1, PIXELSIZE*(PACKETSIZE-0)-PIXELSIZE,
-                                       PACKETBITS*widthPointer-PIXELSIZE*(0-1)-1, PACKETBITS*widthPointer-PIXELSIZE*(0-1)-PIXELSIZE,
-                                       PACKETBITS*widthPointer-PIXELSIZE*(0)-1, PACKETBITS*widthPointer-PIXELSIZE*(0)-PIXELSIZE,
-                                       PACKETBITS*widthPointer-PIXELSIZE*(0+1)-1, PACKETBITS*widthPointer-PIXELSIZE*(0+1)-PIXELSIZE);
+                                middle(m_axi_pixels_data, PIXELSIZE*(WORDSIZE-0)-1, PIXELSIZE*(WORDSIZE-0)-PIXELSIZE,
+                                       WORDBITS*widthPointer-PIXELSIZE*(0-1)-1, WORDBITS*widthPointer-PIXELSIZE*(0-1)-PIXELSIZE,
+                                       WORDBITS*widthPointer-PIXELSIZE*(0)-1, WORDBITS*widthPointer-PIXELSIZE*(0)-PIXELSIZE,
+                                       WORDBITS*widthPointer-PIXELSIZE*(0+1)-1, WORDBITS*widthPointer-PIXELSIZE*(0+1)-PIXELSIZE);
                             end if;
 
                             if widthPointer = 1 then -- Last pixel in the row
@@ -174,10 +173,10 @@ begin
                                     restart <= '1';
                                 end if;
                             else -- Crossover intermediate pixel
-                                middle(m_axi_pixels_data, PIXELSIZE*(PACKETSIZE-(PACKETSIZE-1))-1, PIXELSIZE*(PACKETSIZE-(PACKETSIZE-1))-PIXELSIZE,
-                                       PACKETBITS*widthPointer-PIXELSIZE*(PACKETSIZE-2)-1, PACKETBITS*widthPointer-PIXELSIZE*(PACKETSIZE-2)-PIXELSIZE,
-                                       PACKETBITS*widthPointer-PIXELSIZE*(PACKETSIZE-1)-1, PACKETBITS*widthPointer-PIXELSIZE*(PACKETSIZE-1)-PIXELSIZE,
-                                       PACKETBITS*widthPointer-PIXELSIZE*(PACKETSIZE)-1, PACKETBITS*widthPointer-PIXELSIZE*(PACKETSIZE)-PIXELSIZE);
+                                middle(m_axi_pixels_data, PIXELSIZE*(WORDSIZE-(WORDSIZE-1))-1, PIXELSIZE*(WORDSIZE-(WORDSIZE-1))-PIXELSIZE,
+                                       WORDBITS*widthPointer-PIXELSIZE*(WORDSIZE-2)-1, WORDBITS*widthPointer-PIXELSIZE*(WORDSIZE-2)-PIXELSIZE,
+                                       WORDBITS*widthPointer-PIXELSIZE*(WORDSIZE-1)-1, WORDBITS*widthPointer-PIXELSIZE*(WORDSIZE-1)-PIXELSIZE,
+                                       WORDBITS*widthPointer-PIXELSIZE*(WORDSIZE)-1, WORDBITS*widthPointer-PIXELSIZE*(WORDSIZE)-PIXELSIZE);
                             end if;
                     end case;
                 end if;
